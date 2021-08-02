@@ -5,8 +5,16 @@
 //#include "FranklinGothic_assets.h"
 /*
  * ToDo
+ * 	- komunikat o przekroczeniu temp radiatora nie znika po dotknięciu
+ * 		- komunikat error
+ * 			- za krótki (za mała czcionka?)
+ * 			- nie wyśrodkowany w pionie
+ *  - pomiar mocy i SWR
+ *  	- wartości szczytowe znikają
+ *
+ * 	- obsługa PTT
  * ver. 1.0.0
- * 	- pomiar czasu pętli 18,5ms
+ * 	- pomiar czasu pętli: 18,5ms
  * schemat
  * - bieżące
  * 	- alarmy związane z IDD
@@ -28,8 +36,6 @@ long vgaValueColor = 0x949694;		// 18,37,18
 //#define vgaBarColor			0xCE59
 long vgaBarColor = 0xcecace;			// 25, 50, 25
 
-///String infoString = "";
-//String errorString = "";
 String infoString = "";
 String warningString = "";		// nieużywany
 String errorString = "";
@@ -59,7 +65,7 @@ enum
 	BAND_NUM
 };
 const char * BAND[BAND_NUM] = {"160m", "80m", "40m", "30m", "20m","17m", "15m","12m", "10m", "6m"};
-byte bandIdx = 1;
+byte bandIdx = 9;	// 6m
 byte AutoBandIdx = 15;
 unsigned long timeAtCycleStart, timeAtCycleEnd, timeStartMorseDownTime,
 		actualCycleTime, timeToogle500ms = 0;
@@ -86,12 +92,26 @@ byte pressed = 255;
 char work_str[7];
 
 float pa1AmperValue;
+float swrValue;
 //float temperaturValue1;
 //float temperaturValue2;
 //float temperaturValue3;
+float pwrForwardValue;
+float pwrReturnValue;
 int temperaturValueI1;
 int temperaturValueI2;
 int temperaturValueI3;
+int forwardValue;		// odczyt napięcia padającego z direct couplera
+int forwardValueAvg;	// średnia z napięcia padającego z direct couplera
+int returnValue;		// odczyt napięcia odbitego z direct couplera
+int returnValueAvg;		// średnia napięcia odbitego z direct couplera
+int fwd_calc = 0;		// sumaryczny odczyt
+int rev_calc = 0;
+int p_curr = 0;			// licznik odczytów
+float fwd_pwr;
+float rev_pwr;
+#define SWR_SAMPLES_CNT             1
+
 float Vref = 2.56;			// napięcie odniesienia dla ADC
 int drawWidgetIndex = 1;
 
@@ -107,6 +127,10 @@ bool SWRLPFmaxValue;
 bool SWR_ster_max;
 bool TemperaturaTranzystoraMaxValue;
 bool TermostatValue;
+
+const float inputFactorVoltage (5.0/1023.0);
+#define pwrForwardFactor (inputFactorVoltage * (222.0/5.0))
+#define pwrReturnFactor (inputFactorVoltage * (222.0/5.0))
 
 
 
@@ -478,7 +502,7 @@ public:
 
 	}
 
-	void init()
+	void init(bool nowe = false)
 	{
 		// Background
 		GD.Tag(_tag);
@@ -499,12 +523,15 @@ public:
 		_heightBar = (_yPos + _height) - _yPosBar - 4;
 		_widthBar = xPosInfoBox - _xPos - 2 * _xPadding;
 
-		//                               title    unit     xPos           yPos              height  width, minValue, maxValue,  colorValue       colorBack             font
-		//ptrActBox = new InfoBox("", _unit, xPosInfoBox, yPosInfoBox, 32, 125, 0, _maxValue, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 16);
-		//ptrMaxBox = new InfoBox("PEP", _unit, xPosInfoBox, yPosInfoBox + 32, 32, 125, 0, _maxValue, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 17);
+		if (nowe)
+		{
+			//                               title    unit     xPos           yPos              height  width, minValue, maxValue,  colorValue       colorBack             font
+			ptrActBox = new InfoBox("", _unit, xPosInfoBox, yPosInfoBox, 32, 125, 0, _maxValue, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 16);
+			ptrMaxBox = new InfoBox("PEP", _unit, xPosInfoBox, yPosInfoBox + 32, 32, 125, 0, _maxValue, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 17);
+		}
 
-		//ptrActBox->init();
-		//ptrMaxBox->init();
+		ptrActBox->init();
+		ptrMaxBox->init();
 
 		//        xPos,     yPos,           height,  width
 		drawScale(_xPosBar, _yPosBar - 18, 15, _widthBar);
@@ -629,20 +656,24 @@ public:
 		{
 			_level = _widthBar;
 		}
-		/* ToDo
+		/*
 		if (_level > _levelOld)
 		{
-			myGLCD.setColor(_colorBar);
-			myGLCD.fillRect(_xPosBar + _levelOld, _yPosBar, _xPosBar + _level,
-					_yPosBar + _heightBar);
+			//myGLCD.setColor(_colorBar);
+			//myGLCD.fillRect(_xPosBar + _levelOld, _yPosBar, _xPosBar + _level, _yPosBar + _heightBar);
+			fillRect(_xPosBar + _levelOld, _yPosBar, _xPosBar + _level, _yPosBar + _heightBar, _colorBar);
 		}
 		else
 		{
-			myGLCD.setColor(_colorBack);
-			myGLCD.fillRect(_xPosBar + _level, _yPosBar, _xPosBar + _levelOld,
-					_yPosBar + _heightBar);
+			//myGLCD.setColor(_colorBack);
+			//myGLCD.fillRect(_xPosBar + _level, _yPosBar, _xPosBar + _levelOld,_yPosBar + _heightBar);
+			fillRect(_xPosBar + _level, _yPosBar, _xPosBar + _levelOld,_yPosBar + _heightBar, _colorBack);
 		}
-*/
+		*/
+		// za każdym razem malujemy całość
+		fillRect(_xPosBar, _yPosBar, _xPosBar + _level, _yPosBar + _heightBar, _colorBar);
+		fillRect(_xPosBar + _level, _yPosBar, _xPosBar + _widthBar, _yPosBar + _heightBar, _colorBack);
+
 		_levelOld = _level;
 		_valueOld = value;
 	}
@@ -691,7 +722,7 @@ public:
 PushButton Down(20, 20, 165, 72, 1);
 PushButton Up(185, 20, 165, 72, 2);
 //InfoBox bandBox("LPF", "m", 20, 120, 72, 330, 0, 0, vgaValueColor, vgaBackgroundColor, GroteskBold32x64, 3);
-InfoBox modeBox("MODE", "", 395, 60, 32, 200, 0, 0, vgaValueColor, vgaBackgroundColor, Grotesk16x32, 4);
+InfoBox modeBox("MODE", "", 395, 60, 32, 200, 4, 5, vgaValueColor, vgaBackgroundColor, Grotesk16x32, 4);
 
 //InfoBox aux1VoltageBox("AUX R", "V", 170, 340, 32, 125, 11, 15, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 6);
 // InfoBox aux2VoltageBox("AUX B", "V", 320, 340, 32, 125, 11, 14, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
@@ -700,7 +731,7 @@ InfoBox modeBox("MODE", "", 395, 60, 32, 200, 0, 0, vgaValueColor, vgaBackground
 InfoBox pa1AmperBox("IDD", "A", 20, 340, 32, 125, 0, 20.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 9);
 InfoBox temperaturBox1("Tranzyst1", "`C", 170, 340, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 10);
 InfoBox temperaturBox3("Radiator", "`C", 320, 340, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 12);
-InfoBox airBox1("AIR1", "", 470, 340, 32, 125, 0, 0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 7);
+InfoBox airBox1("AIR1", "", 470, 340, 32, 125, 2, 3, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 7);
 
 //InfoBox pa2AmperBox("PA 2", "A", 170, 380, 32, 125, 0, 24.9, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
@@ -708,11 +739,11 @@ InfoBox temperaturBox2("Tranzyst2", "`C", 170, 380, 32, 125, 10, 60, vgaValueCol
 //InfoBox drainVoltageBox("DRAIN", "V", 20, 340, 32, 125, 48, 54, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 5);
 
 
-InfoBox emptyBox("", "", 470, 380, 32, 125, 0.0, 0.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 13);
+InfoBox emptyBox("", "", 470, 380, 32, 125, 6.0, 7.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 13);
 
 //InfoBox msgBox("", "", 20, 420, 32, 760, 0, 0, vgaValueColor, vgaBackgroundColor, Grotesk16x32, 14);
-InfoBox msgBox("", "", 20, 420, 32, 760, 0, 0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 14);
-InfoBox txRxBox("", "", 645, 340, 72, 135, 0, 0, vgaValueColor, vgaBackgroundColor, GroteskBold32x64, 15);
+InfoBox msgBox("", "", 20, 420, 32, 760, 1, 2, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 14);
+InfoBox txRxBox("", "", 645, 340, 72, 135, 8, 9, vgaValueColor, vgaBackgroundColor, GroteskBold32x64, 15);
 DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1250, 375, 875, vgaBarColor, vgaBackgroundColor, 10, 18);
 DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackgroundColor, 16, 19);
 
@@ -762,8 +793,8 @@ void setup()
 	//temperaturBox3.setFloat(temperaturValue3, 1, 5, false);
 	//airBox1.init();
 	//pa1AmperBox.init();
-
-
+	pwrBar.init(true);
+	swrBar.init(true);
 }
 
 void loop()
@@ -774,7 +805,7 @@ void loop()
 		toogle500ms = not toogle500ms;
 		timeToogle500ms = timeAtCycleStart;
 	}
-	//GD.Clear();
+	GD.Clear();
 	Down.init();
 	Up.init();
 	// pasma:
@@ -803,20 +834,26 @@ void loop()
 
 	pwrBar.init();
 	swrBar.init();
+
 	//airBox1.init();
 	//airBox1.setText("OFF");
 
 	read_inputs();
 #ifdef DEBUG
-	//if (drawWidgetIndex == 8)
-	if (false)
+	if (true)
 	{
 		Serial.print("temp3: ");
-		Serial.println(temperaturValue3);
+		Serial.println(temperaturValueI3);
+		Serial.print("power: ");
+		Serial.println(pwrForwardValue);
 	}
 #endif
-	//temperaturBox3.setFloat(temperaturValue3, 1, 5, drawWidgetIndex == 8);
-	//temperaturBox3.setFloat(temperaturValue3, 1, 5, true);
+
+	pwrBar.setValue(pwrForwardValue, true);
+
+	swrValue = calc_SWR(forwardValue, returnValue);
+	swrBar.setValue(swrValue, true);
+
 	temperaturBox1.setInt(temperaturValueI1, 3, true);
 	temperaturBox2.setInt(temperaturValueI2, 3, true);
 	temperaturBox3.setInt(temperaturValueI3, 3, true);
@@ -875,42 +912,14 @@ void loop()
 	{
 		errorString = "Error: Protector Imax detected";
 	}
-
-
-	/*
-	GD.ColorRGB(vgaBackgroundColor);
-	GD.Tag(102);
-	GD.Begin(RECTS);
-	GD.VertexTranslateX(200 * 16);
-	GD.Vertex2ii(195, 60);
-	GD.Vertex2ii(395, 92);
-	GD.VertexTranslateX(0 * 16);
-
-	int titleFontXsize = getFontXsize(18);
-	//int titleFontYsize = myGLCD.getFontYsize();
-	//int titleFontYsize = getFontYsize(18);
-	const char *_title = "MODE";
-	int titleLength = String(_title).length();
-	//myGLCD.print(_title,
-	//		_xPos + (_width - titleLength * titleFontXsize) - _xPadding,
-	//		_yPos + _yPadding + 1);
-	//GD.cmd_text(_xPos + (_width - titleLength * titleFontXsize) - _xPadding, _yPos + _yPadding + 1, 18, 0, _title);
-	int _xPos = 395;
-	int _width = 200;
-	GD.ColorRGB(vgaTitleUnitColor);
-	GD.cmd_text(_xPos + (_width - titleLength * titleFontXsize) - 4, 60 + 1 + 1,
-			18, 0, _title);
-	const char *_text = "MANUALLY";
-	GD.ColorRGB(vgaValueColor);
-	GD.cmd_text(_xPos + 4, 60 + 1, Grotesk16x32, 0, _text);
-	*/
-
+	// dotyk
 	GD.get_inputs();
 	if (GD.inputs.tag > 0 and GD.inputs.tag < 255)
 	{
 #ifdef DEBUG
 		Serial.println(GD.inputs.tag);
 #endif
+		// obsługa pasm niepotrzebna
 		if (Down.isTouchInside())
 		{
 			if (bandIdx <= 0)
@@ -945,6 +954,7 @@ void loop()
 			Serial.println("Up");
 #endif
 		}
+		// to też niepotrzebne
 		if (modeBox.isTouchInside())
 		{
 			if (mode == MANUAL)
@@ -1179,6 +1189,10 @@ void read_inputs()
 {
 	//-----------------------------------------------------------------------------
 	// Read all inputs
+	forwardValue = analogRead(FWD_PIN);
+	pwrForwardValue = sq(forwardValue * pwrForwardFactor) / 50;
+	returnValue = analogRead(REF_PIN);
+	pwrReturnValue = sq(returnValue * pwrReturnFactor) / 50;
 	temperaturValueI1 = getTempInt(TEMP1_PIN);
 	temperaturValueI2 = getTempInt(TEMP2_PIN);
 	temperaturValueI3 = getTempInt(TEMP3_PIN);
@@ -1245,4 +1259,29 @@ void FanController(byte co)
 		default:
 			break;
 	}
+}
+float calc_SWR(int forward, int ref)
+{
+#define MAX_SWR	9.9
+	float swr;
+	if (forward > 0)
+	{
+		if (forward <= ref)
+		{
+			swr = MAX_SWR;
+		}
+		else
+		{
+			swr = (float)(forward + ref)/(forward - ref);
+			if (swr > MAX_SWR)
+			{
+				swr = MAX_SWR;
+			}
+		}
+	}
+	else
+	{
+		swr = 1;
+	}
+	return swr;
 }

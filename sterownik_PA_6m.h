@@ -9,7 +9,7 @@
 #define STEROWNIK_FT81X_H_
 
 //#define DEBUG
-#define CZAS_PETLI
+//#define CZAS_PETLI
 
 /*
  * wejścia/wyjścia cyfrowe:
@@ -31,12 +31,14 @@
 #define FAN3_PIN			10	// trzeci bieg wentylatora
 #define CZAS_PETLI_PIN		19	// RxD1 PD2
 
-#define doPin_blokada       44	// aktywny stan wysoki - blokada głównie od temperatury
-#define doPin_errLED      	47	// dioda wystąpienia jakiegoś błędu - aktywny stan wysoki - jak jest błąd - stan wysoki i mruga
+#define doPin_blokada       44	// aktywny stan wysoki (jest tranzystor na wyjściu)? - blokada głównie od temperatury
+#define doPin_errLED      	47	// dioda wystąpienia jakiegoś błędu - aktywny stan wysoki (jest tranzystor na wyjściu)? - jak jest błąd - stan wysoki i mruga
 
 /*
  * wejścia analogowe:
  */
+#define FWD_PIN				A6		// forward na antenie
+#define REF_PIN				A7		// odbita na antenie
 #define TEMP1_PIN			A12		// tranzystor 1
 #define TEMP2_PIN			A13		// tranzystor 2
 #define TEMP3_PIN			A14		// wejście dla temperatury radiatora
@@ -45,7 +47,6 @@
 #define thresholdTemperaturAirOn1   50
 #define thresholdTemperaturTransistorMax	90		// temperatura tranzystora (z termistora nr 1), przy której PA jest blokowane - STBY
 
-#define inputFactorVoltage (5.0/1023.0)
 #ifdef ACS758
 #define pa1AmperFactor (inputFactorVoltage * (125/2.5))    // 20mV/A ACS758LCB-100B
 #define pa1AmperOffset (1023/5 * 2.505)                     // 2.5V z czujnika Hallla -> zmierzyć i wstawić
@@ -90,5 +91,6 @@ void read_inputs();
 float getTemperatura(uint8_t pin);
 int getTempInt(uint8_t pin);
 void FanController(byte co);
+float calc_SWR(int forward, int ref);
 
 #endif /* STEROWNIK_FT81X_H_ */
