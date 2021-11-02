@@ -10,6 +10,7 @@
 
 //#define DEBUG
 //#define CZAS_PETLI
+#define ACS712
 
 /*
  * wejścia/wyjścia cyfrowe:
@@ -22,16 +23,20 @@
 #define WY_ALARMU_PIN		4	// PIN wyłączający zasilanie PA - alarm - stan aktywny wysoki
 #define RESET_ALARMU_PIN	5	// PIN resetujący wyłączenie zasilania PA; aktywny jest stan niski
 #define ALARM_OD_IDD_PIN	6	// informacja o zadziałaniu zabezpieczenia od prądu w PA (zadziałanie BTSa)
-#define WE_PTT_PIN			7	// wejście informacji o PTT (TRX zwiera do masy, gdy przechodzi na nadawanie); stan aktywny niski
-#define WY_PTT_PIN			8	// wyjście PTT (przekaźniki w PA)
-#define BIAS_PIN			9	// wyjście na BIAS
+#define WE_PTT_PIN			7	// wejście informacji o PTT; stan aktywny niski
+/*
+ * doPin_blokada -> BLOKADA_PTT na schemacie sterownika
+ * blokada PTT dla QRP/QRO (standby)
+ * blokada PTT od alarmów
+ */
+#define doPin_blokada       8	// aktywny stan wysoki
+#define BIAS_PIN			9	// wyjście na BIAS; niewykorzystane
 #define FAN_ON_PIN			13	// włączenie wentylatora
 #define FAN1_PIN			12	// pierwszy bieg wentylatora
 #define FAN2_PIN			11	// drugi bieg wentylatora
 #define FAN3_PIN			10	// trzeci bieg wentylatora
 #define CZAS_PETLI_PIN		19	// RxD1 PD2
 
-#define doPin_blokada       44	// aktywny stan wysoki (jest tranzystor na wyjściu)? - blokada głównie od temperatury
 #define doPin_errLED      	47	// dioda wystąpienia jakiegoś błędu - aktywny stan wysoki (jest tranzystor na wyjściu)? - jak jest błąd - stan wysoki i mruga
 
 /*
@@ -47,9 +52,9 @@
 #define thresholdTemperaturAirOn1   50
 #define thresholdTemperaturTransistorMax	90		// temperatura tranzystora (z termistora nr 1), przy której PA jest blokowane - STBY
 
-#ifdef ACS758
-#define pa1AmperFactor (inputFactorVoltage * (125/2.5))    // 20mV/A ACS758LCB-100B
-#define pa1AmperOffset (1023/5 * 2.505)                     // 2.5V z czujnika Hallla -> zmierzyć i wstawić
+#ifdef ACS712
+#define pa1AmperFactor (inputFactorVoltage * (30/2.0))    // 66mV/A -> 15A/V; ACS712 30A
+#define pa1AmperOffset (1023/5 * 2.5035)                     // 2.5V z czujnika Hallla -> zmierzyć i wstawić
 #else
 #define pa1AmperFactor (inputFactorVoltage * (22.0/5.0))    // 3k Ris w BTS50085
 #define pa1AmperOffset (0.0)                     // 0.0V	- pomiar z BTS50085 - od zera

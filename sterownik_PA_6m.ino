@@ -13,6 +13,10 @@
  *  	- wartości szczytowe znikają
  *
  * 	- obsługa PTT
+ * 	ver 1.0.1
+ * 	- obsługa wyjścia WY_ALARMU_PIN -> odcięcie zasilania przy alarmie
+ * 	- obsługa wyjścia BLOKADA_PTT_PIN
+ *
  * ver. 1.0.0
  * 	- pomiar czasu pętli: 18,5ms
  * schemat
@@ -755,8 +759,13 @@ void setup()
 #ifdef DEBUG
   Serial.println("setup");
 #endif
+  pinMode(WY_ALARMU_PIN, OUTPUT);
+  digitalWrite(WY_ALARMU_PIN, LOW);
   pinMode(ALARM_OD_IDD_PIN, INPUT_PULLUP);
   pinMode(RESET_ALARMU_PIN, OUTPUT);
+	pinMode(WE_PTT_PIN, INPUT);			// aktywny stan niski; informacja o stanie PTT
+	pinMode(doPin_blokada, OUTPUT);		// aktywny stan wysoki
+	digitalWrite(doPin_blokada, LOW);
   pinMode(FAN_ON_PIN, OUTPUT);
   digitalWrite(FAN_ON_PIN, LOW);
   pinMode(FAN1_PIN, OUTPUT);
@@ -1196,11 +1205,15 @@ void read_inputs()
 	temperaturValueI1 = getTempInt(TEMP1_PIN);
 	temperaturValueI2 = getTempInt(TEMP2_PIN);
 	temperaturValueI3 = getTempInt(TEMP3_PIN);
-	pa1AmperValue = analogRead(IDD_PIN)*pa1AmperFactor;
+	pttValue = not digitalRead(WE_PTT_PIN);					// aktywny stan niski
+	pa1AmperValue = (analogRead(IDD_PIN) - pa1AmperOffset)*pa1AmperFactor;
 	if (pa1AmperValue < 0)
 		pa1AmperValue = 0;
-	// informacja o przekroczeniu IDD jest brana z PA -> gdy zadziała BTS i ustawi przerzutnik
-	ImaxValue = not digitalRead(ALARM_OD_IDD_PIN);				// aktywny stan niski
+	/*
+	 * informacja o przekroczeniu IDD jest brana z zabezpieczenia prądowego -> gdy zadziała komparator i ustawi przerzutnik:
+	 * aktywny stan niski
+	 */
+	ImaxValue = not digitalRead(ALARM_OD_IDD_PIN);
 
 
 	/*
