@@ -1,22 +1,32 @@
-#include "sterownik_PA_6m.h"
+#include "sterownik_FT810.h"
 
+#include <EEPROM.h>
 #include <SPI.h>
 #include <GD3.h>
+#include <math.h>
 //#include "FranklinGothic_assets.h"
-/*
+/* schemat sterownika: PA_500W->PA_500W_3->sterownik->sterownik_FT810
+ *
  * ToDo
+ * 	- przełączanie pasm
+ * 		- blokada przełączania pasm podczas nadawania
+ * 	- czekanie na puszczenie dotyku ??
+ * 	- obsługa WY_ALARMU_PIN
+ * 		- obsługa wyjścia WY_ALARMU_PIN -> powoduje odcięcie zasilania (np. przy alarmie)
+ * 			- kiedy, przy którym alarmie wykonać i czy w ogóle?
  * 	- komunikat o przekroczeniu temp radiatora nie znika po dotknięciu
  * 		- komunikat error
  * 			- za krótki (za mała czcionka?)
  * 			- nie wyśrodkowany w pionie
- *  - pomiar mocy i SWR
  *  	- wartości szczytowe znikają
- *
- * 	- obsługa PTT
- * 	ver 1.0.1
- * 	- obsługa wyjścia WY_ALARMU_PIN -> odcięcie zasilania przy alarmie
+ * ver 1.0.3
+ * 	- przełączanie pasm
+ *	- pamięć mode i pasma: EEPROM
+ * 	- obsługa ddotyku na przycisku OPR/TX/STBY
+ *  - pomiar mocy i SWR
+ * ver 1.0.2
+ * ver 1.0.1
  * 	- obsługa wyjścia BLOKADA_PTT_PIN
- *
  * ver. 1.0.0
  * 	- pomiar czasu pętli: 18,5ms
  * schemat
@@ -43,7 +53,7 @@ long vgaBarColor = 0xcecace;			// 25, 50, 25
 String infoString = "";
 String warningString = "";		// nieużywany
 String errorString = "";
-bool genOutputEnable;
+bool genOutputEnable = true;
 bool isFanOn = false;
 
 enum
@@ -58,6 +68,7 @@ enum
 {
 	BAND_160 = 0,
 	BAND_80,
+	BAND_60,
 	BAND_40,
 	BAND_30,
 	BAND_20,
@@ -68,12 +79,30 @@ enum
 	BAND_6,
 	BAND_NUM
 };
-const char * BAND[BAND_NUM] = {"160m", "80m", "40m", "30m", "20m","17m", "15m","12m", "10m", "6m"};
-byte bandIdx = 9;	// 6m
+enum
+{
+	LPF1_PIN = 22,
+	LPF2_PIN,
+	LPF3_PIN,
+	LPF4_PIN,
+	LPF5_PIN,
+	LPF6_PIN,
+	LPF7_PIN
+};
+const char * BAND[BAND_NUM] = {"160m", "80m", "60m", "40m", "30m", "20m","17m", "15m","12m", "10m", "6m"};
+
+byte current_band = BAND_80;
+byte prev_band = BAND_NUM;
+byte Band_PIN[BAND_NUM] = {LPF7_PIN, LPF6_PIN, LPF5_PIN, LPF5_PIN, LPF4_PIN, LPF4_PIN, LPF3_PIN, LPF3_PIN, LPF2_PIN, LPF2_PIN, LPF1_PIN};
+
 byte AutoBandIdx = 15;
+#define COLDSTART_REF	0x12   		// when started, the firmware examines this "Serial Number"
+#define CZAS_REAKCJI	1000		// the time [ms] after which the writing into EEPROM takes place
+boolean byla_zmiana = false;
+unsigned long czas_zmiany;
 unsigned long timeAtCycleStart, timeAtCycleEnd, timeStartMorseDownTime,
 		actualCycleTime, timeToogle500ms = 0;
-#define cycleTime        150
+#define cycleTime        200
 bool toogle500ms;
 
 
@@ -91,15 +120,11 @@ byte Grotesk16x32 = 22;		// font nr 22
 //byte franklingothic_normal = FRANKLINGOTHIC_HANDLE;
 byte GroteskBold16x32 = 24;
 byte GroteskBold32x64 = 31;
-byte pressed = 255;
 
 char work_str[7];
 
 float pa1AmperValue;
 float swrValue;
-//float temperaturValue1;
-//float temperaturValue2;
-//float temperaturValue3;
 float pwrForwardValue;
 float pwrReturnValue;
 int temperaturValueI1;
@@ -116,13 +141,12 @@ float fwd_pwr;
 float rev_pwr;
 #define SWR_SAMPLES_CNT             1
 
-float Vref = 2.56;			// napięcie odniesienia dla ADC
 int drawWidgetIndex = 1;
 
 bool pttValue = false;
 
 // zmienne powodujące przejście PA w tryb standby -> blokada nadawania (blokada PTT)
-bool stbyValue = true;
+bool stbyValue = false;
 bool ImaxValue;
 bool PmaxValue;
 bool SWRmaxValue;
@@ -135,11 +159,26 @@ bool TermostatValue;
 const float inputFactorVoltage (5.0/1023.0);
 #define pwrForwardFactor (inputFactorVoltage * (222.0/5.0))
 #define pwrReturnFactor (inputFactorVoltage * (222.0/5.0))
+/* pomiar temperatury na bazie termistora
+* 		- termistory TEWA TTS-1.8KC7-BG 1,8kom (25C) beta = 3500
+* 			- obliczenia: R = R25*exp[beta(1/T - 1/298,15)] T - temperatura
+* 				- R = Rf*U/(Uref - U) gdzie U - napięcie na dzielnku z Rf i termistora zasilanego przez Uref (5V)
+* 			- obliczenie temp T = 1/((ln(R/R25)/beta + 1/T25)) [K] ; T25 = 298,15
+*/
+float Vref = 4.994;			// napięcie odniesienia dla ADC ??
+float Uref = 4.994;			// napięcie zasilające dzielnik pomiarowy temperatury
+int beta = 3500;			// współczynnik beta termistora
+int R25 = 1800;				// rezystancja termistora w temperaturze 25C
+int Rf1 = 2700;				// rezystancja rezystora szeregowego z termistorem -> zmierzyć; zapomniałem...
 
-
+/* zmienne do pomiaru mocy i swr
+ *
+ */
+int PWR, SWR;
+byte K_Mult = 24;	// ilość zwojów w transformatorze direct couplera
 
 /*
- * tylko button czuły na dotyk bez tekstu i grafiki
+ * button czuły na dotyk bez tekstu i grafiki
  */
 class PushButton
 {
@@ -168,6 +207,11 @@ public:
 		// Check if touch is inside this widget
 		GD.get_inputs();
 		return GD.inputs.tag == _tag;
+	}
+	bool isTouchInside(byte tag)
+	{
+		// Check if touch is inside this widget
+		return tag == _tag;
 	}
 private:
 };
@@ -289,15 +333,12 @@ public:
 		//if ((value != _value) or _drawLater) -> brak wyświetlania ...
 		if (true)
 		{
-		    int indu, indu_sub;
 		    char work_str[7];
 			_value = value;
-			//myGLCD.setBackColor(_colorBack);
 			GD.ColorRGB(_colorBack);
 
 			if (value < _minValue or value > _maxValue)
 			{
-				//myGLCD.setColor(VGA_RED);
 				GD.ColorRGB(VGA_RED);
 				if (_raisedError == false and errorString == "")
 				{
@@ -310,16 +351,11 @@ public:
 			else
 			{
 				_raisedError = false;
-				//myGLCD.setColor(_colorValue);
 				GD.ColorRGB(_colorValue);
 			}
 
 			if (show)
 			{
-				//myGLCD.setFont(_font);
-
-				//myGLCD.printNumF(_value, dec, _xPos + _xPadding,
-					//	_yPos + _yPadding, '.', length);
 			    //indu = _value;
 			    //indu_sub = (int) _value % 10;
 			    //sprintf(work_str,"%2u.%01u", indu, indu_sub);
@@ -428,9 +464,11 @@ public:
 	bool isTouchInside()
 	{
 		// Check if touch is inside this widget
-		//return ((x > _xPos and x < _xPos + _width)
-			//	and (y > _yPos and y < _yPos + _height));
 		return GD.inputs.tag == _tag;
+	}
+	bool isTouchInside(byte tag)
+	{
+		return tag == _tag;
 	}
 };
 class DisplayBar
@@ -539,7 +577,7 @@ public:
 
 		//        xPos,     yPos,           height,  width
 		drawScale(_xPosBar, _yPosBar - 18, 15, _widthBar);
-		/* ToDo
+		/* ToDo ??
 		myGLCD.drawRect(_xPosBar, _yPosBar, _xPosBar + _widthBar,
 				_yPosBar + _heightBar);
 		_xPosBar = _xPosBar + 1;
@@ -733,7 +771,7 @@ InfoBox modeBox("MODE", "", 395, 60, 32, 200, 4, 5, vgaValueColor, vgaBackground
 //InfoBox airBox2("AIR2", "", 470, 380, 32, 125, 0, 0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 8);
 
 InfoBox pa1AmperBox("IDD", "A", 20, 340, 32, 125, 0, 20.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 9);
-InfoBox temperaturBox1("Tranzyst1", "`C", 170, 340, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 10);
+InfoBox temperaturBox1("Tranzyst1", "`C", 170, 340, 32, 125, 10, 65, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 10);
 InfoBox temperaturBox3("Radiator", "`C", 320, 340, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 12);
 InfoBox airBox1("AIR1", "", 470, 340, 32, 125, 2, 3, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 7);
 
@@ -748,56 +786,93 @@ InfoBox emptyBox("", "", 470, 380, 32, 125, 6.0, 7.0, vgaValueColor, vgaBackgrou
 //InfoBox msgBox("", "", 20, 420, 32, 760, 0, 0, vgaValueColor, vgaBackgroundColor, Grotesk16x32, 14);
 InfoBox msgBox("", "", 20, 420, 32, 760, 1, 2, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 14);
 InfoBox txRxBox("", "", 645, 340, 72, 135, 8, 9, vgaValueColor, vgaBackgroundColor, GroteskBold32x64, 15);
-DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1250, 375, 875, vgaBarColor, vgaBackgroundColor, 10, 18);
-DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackgroundColor, 16, 19);
+//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1250, 375, 875, vgaBarColor, vgaBackgroundColor, 10, 18);	// zakres do 1,25 kW
+//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 750, 225, 525, vgaBarColor, vgaBackgroundColor, 10, 18);      // Wybor zakresu do 0,75kW
+//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 650, 195, 455, vgaBarColor, vgaBackgroundColor, 10, 18);      // Wybor zakresu do 0,65kW
+DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 600, 240, 420, vgaBarColor, vgaBackgroundColor, 10, 18);      // Wybor zakresu do 0,5kW
 
+DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackgroundColor, 16, 19);
 
 void setup()
 {
 	//analogReference(INTERNAL2V56);
-  Serial.begin(115200);
 #ifdef DEBUG
-  Serial.println("setup");
+	Serial1.begin(115200);
+	Serial1.println("setup");
 #endif
-  pinMode(WY_ALARMU_PIN, OUTPUT);
-  digitalWrite(WY_ALARMU_PIN, LOW);
-  pinMode(ALARM_OD_IDD_PIN, INPUT_PULLUP);
-  pinMode(RESET_ALARMU_PIN, OUTPUT);
-	pinMode(WE_PTT_PIN, INPUT);			// aktywny stan niski; informacja o stanie PTT
-	pinMode(doPin_blokada, OUTPUT);		// aktywny stan wysoki
-	digitalWrite(doPin_blokada, LOW);
-  pinMode(FAN_ON_PIN, OUTPUT);
-  digitalWrite(FAN_ON_PIN, LOW);
-  pinMode(FAN1_PIN, OUTPUT);
-  digitalWrite(FAN1_PIN, LOW);
-  pinMode(FAN2_PIN, OUTPUT);
-  digitalWrite(FAN2_PIN, LOW);
-  pinMode(FAN3_PIN, OUTPUT);
-  digitalWrite(FAN3_PIN, LOW);
+	// pierwsze 24 komórki EEPROM są używane i zajęte przez wyświetlacz (dane kalibracji)
+	if (EEPROM.read(30) != COLDSTART_REF)
+	{
+		EEPROM.write(31, current_band);
+		EEPROM.write(32, mode);
+		EEPROM.write(30, COLDSTART_REF); // COLDSTART_REF in first byte indicates all initialized
+#ifdef DEBUG
+		Serial1.println("writing initial values into memory");
+#endif
+	}
+	else                       // EEPROM contains stored data, retrieve the data
+	{
+		// read the current band
+		current_band = EEPROM.read(31);
+		// read mode
+		mode = EEPROM.read(32);
+#ifdef DEBUG
+		Serial1.println("reading current_band from memory: ");
+		Serial1.println(current_band);
+#endif
+	}
+	switch_bands();
 
-  pinMode(CZAS_PETLI_PIN, OUTPUT);
+	pinMode(WY_ALARMU_PIN, OUTPUT);
+	digitalWrite(WY_ALARMU_PIN, LOW);
+	pinMode(ALARM_OD_IDD_PIN, INPUT);
+	pinMode(WE_PTT_PIN, INPUT);
+	pinMode(RESET_ALARMU_PIN, OUTPUT);
+	digitalWrite(RESET_ALARMU_PIN, HIGH);
+	pinMode(WE_PTT_PIN, INPUT);
+	pinMode(BLOKADA_PTT_PIN, OUTPUT);
+	digitalWrite(BLOKADA_PTT_PIN, LOW);
+	pinMode(FAN_ON_PIN, OUTPUT);
+	digitalWrite(FAN_ON_PIN, LOW);
+	pinMode(FAN1_PIN, OUTPUT);
+	digitalWrite(FAN1_PIN, LOW);
+	pinMode(FAN2_PIN, OUTPUT);
+	digitalWrite(FAN2_PIN, LOW);
+	pinMode(FAN3_PIN, OUTPUT);
+	digitalWrite(FAN3_PIN, LOW);
 
-  digitalWrite(RESET_ALARMU_PIN, HIGH);
-  pinMode(PDPin, OUTPUT);
-  digitalWrite(PDPin, HIGH);
-  delay(20);
-  digitalWrite(PDPin, LOW);
-  delay(20);
-  digitalWrite(PDPin, HIGH);
-  delay(20);
+	pinMode(CZAS_PETLI_PIN, OUTPUT);
+	pinMode(doPin_errLED, OUTPUT);
+	digitalWrite(doPin_errLED, LOW);
 
-  GD.begin(1);
-  GD.cmd_setrotate(0);
-  //LOAD_ASSETS();
-  GD.ClearColorRGB(0x103000);
-  GD.Clear();
-  GD.cmd_text(GD.w / 2, GD.h / 2, 31, OPT_CENTER, "LDMOS-PA  1kW");
-  GD.swap();
-  delay(500);
+	pinMode(LPF1_PIN, OUTPUT);
+	pinMode(LPF2_PIN, OUTPUT);
+	pinMode(LPF3_PIN, OUTPUT);
+	pinMode(LPF4_PIN, OUTPUT);
+	pinMode(LPF5_PIN, OUTPUT);
+	pinMode(LPF6_PIN, OUTPUT);
+	pinMode(LPF7_PIN, OUTPUT);
 
-  GD.Clear();
+	pinMode(PDPin, OUTPUT);
+	digitalWrite(PDPin, HIGH);
+	delay(20);
+	digitalWrite(PDPin, LOW);
+	delay(20);
+	digitalWrite(PDPin, HIGH);
+	delay(20);
 
-  //temperaturBox3.init();
+	GD.begin(1);
+	GD.cmd_setrotate(0);
+	//LOAD_ASSETS();
+	GD.ClearColorRGB(0x103000);
+	GD.Clear();
+	GD.cmd_text(GD.w / 2, GD.h / 2, 31, OPT_CENTER, "Sterownik PA ver. 1.0.3");
+	GD.swap();
+	delay(500);
+
+	GD.Clear();
+
+	//temperaturBox3.init();
 
 	//temperaturBox3.setFloat(temperaturValue3, 1, 5, false);
 	//airBox1.init();
@@ -808,12 +883,14 @@ void setup()
 
 void loop()
 {
+	byte inputsTag;
 	timeAtCycleStart = millis();
 	if ((timeAtCycleStart - timeToogle500ms) > 500)
 	{
 		toogle500ms = not toogle500ms;
 		timeToogle500ms = timeAtCycleStart;
 	}
+
 	GD.Clear();
 	Down.init();
 	Up.init();
@@ -823,9 +900,17 @@ void loop()
 	GD.cmd_text(20 + (330 - String(tyt).length() * getFontXsize(18)) - 4,
 			20 + 1 + 1, 18, 0, tyt);
 	GD.ColorRGB(vgaValueColor);
-	GD.cmd_text(185, 56, GroteskBold32x64, OPT_CENTER, BAND[bandIdx]);
+	GD.cmd_text(185, 56, GroteskBold32x64, OPT_CENTER, BAND[current_band]);
 
-	modeBox.init();
+	if (mode == MANUAL)
+	{
+		modeTxt = "MANUALLY";
+	}
+	else
+	{
+		modeTxt = "AUTO";
+	}
+	modeBox.setText(modeTxt);
 
 	//drainVoltageBox.init();
 	//aux1VoltageBox.init();
@@ -837,9 +922,6 @@ void loop()
 	msgBox.init();
 
 	txRxBox.init();
-	txRxBox.setColorValue(vgaBackgroundColor);
-	txRxBox.setColorBack(VGA_YELLOW);
-	txRxBox.setText("STBY");
 
 	pwrBar.init();
 	swrBar.init();
@@ -848,20 +930,20 @@ void loop()
 	//airBox1.setText("OFF");
 
 	read_inputs();
-#ifdef DEBUG
+#ifdef DEBUGi
 	if (true)
 	{
-		Serial.print("temp3: ");
-		Serial.println(temperaturValueI3);
-		Serial.print("power: ");
-		Serial.println(pwrForwardValue);
+		Serial1.print("temp3: ");
+		Serial1.println(temperaturValueI3);
+		Serial1.print("power: ");
+		Serial1.println(pwrForwardValue);
 	}
 #endif
 
-	pwrBar.setValue(pwrForwardValue, true);
+	pwrBar.setValue(PWR, true);
 
-	swrValue = calc_SWR(forwardValue, returnValue);
-	swrBar.setValue(swrValue, true);
+	//swrValue = calc_SWR(forwardValue, returnValue);
+	swrBar.setValue(SWR/100.0, true);
 
 	temperaturBox1.setInt(temperaturValueI1, 3, true);
 	temperaturBox2.setInt(temperaturValueI2, 3, true);
@@ -889,6 +971,7 @@ void loop()
 		else
 			airBox1.setText("OFF");
 	}
+	// ToDo dubel kontroli temperatury: jest już kontrola w InfoBox
 	if (temperaturValueI1 > thresholdTemperaturTransistorMax or temperaturValueI2 > thresholdTemperaturTransistorMax)	// przekroczenie temperatury granicznej obudowy jednego z tranzystorów
 	{
 		TemperaturaTranzystoraMaxValue = true;
@@ -921,50 +1004,52 @@ void loop()
 	{
 		errorString = "Error: Protector Imax detected";
 	}
-	// dotyk
+	// analiza dotyku
 	GD.get_inputs();
-	if (GD.inputs.tag > 0 and GD.inputs.tag < 255)
+	inputsTag = GD.inputs.tag;
+	if (inputsTag > 0 and inputsTag < 255)
 	{
 #ifdef DEBUG
-		Serial.println(GD.inputs.tag);
+		Serial1.println(inputsTag);
 #endif
-		// obsługa pasm niepotrzebna
-		if (Down.isTouchInside())
+		// pasmo w dół
+		if (Down.isTouchInside(inputsTag))
 		{
-			if (bandIdx <= 0)
+			if (current_band == BAND_160)
 			{
-				bandIdx = BAND_NUM - 1;
+				current_band = BAND_NUM - 1;
 			}
 			else
 			{
-				bandIdx--;
+				current_band--;
 			}
-			//byla_zmiana = true;
-			//czas_zmiany = millis();
-			//bandBox.setText(BAND[bandIdx]);
+			byla_zmiana = true;
+			czas_zmiany = millis();
+			switch_bands();
 #ifdef DEBUG
-			Serial.println("Down");
+			Serial1.println("Down");
 #endif
 		}
-		if (Up.isTouchInside())
+		// pasmo w górę
+		if (Up.isTouchInside(inputsTag))
 		{
-			if (bandIdx >= BAND_NUM - 1)
+			if (current_band == BAND_6)
 			{
-				bandIdx = 0;
+				current_band = BAND_160;
 			}
 			else
 			{
-				bandIdx++;
+				current_band++;
 			}
-			//byla_zmiana = true;
-			//czas_zmiany = millis();
-			//bandBox.setText(BAND[bandIdx]);
+			byla_zmiana = true;
+			czas_zmiany = millis();
+			switch_bands();
 #ifdef DEBUG
-			Serial.println("Up");
+			Serial1.println("Up");
 #endif
 		}
-		// to też niepotrzebne
-		if (modeBox.isTouchInside())
+		// zmiana trybu zmiany pasma
+		if (modeBox.isTouchInside(inputsTag))
 		{
 			if (mode == MANUAL)
 			{
@@ -974,17 +1059,22 @@ void loop()
 			{
 				mode = MANUAL;
 			}
+			byla_zmiana = true;
+			czas_zmiany = millis();
 		}
-		if (mode == MANUAL)
+		// przejście w tryb standby i powrót
+		if (txRxBox.isTouchInside(inputsTag))
 		{
-			modeTxt = "MANUALLY";
+			if (stbyValue)
+			{
+				stbyValue = false;
+			}
+			else
+			{
+				stbyValue = true;
+			}
 		}
-		else
-		{
-			modeTxt = "AUTO";
-		}
-		modeBox.setText(modeTxt);
-		if (msgBox.isTouchInside())
+		if (msgBox.isTouchInside(inputsTag))
 		{
 			if (msgBox.getText() == "")
 			{
@@ -1023,14 +1113,17 @@ void loop()
 		txRxBox.setColorValue(vgaBackgroundColor);
 		txRxBox.setColorBack(VGA_YELLOW);
 		txRxBox.setText("STBY");
+		digitalWrite(BLOKADA_PTT_PIN, HIGH);
+		/* co to jest? o co tu chodzi?
 		if (not stbyValue)
 		{
-			digitalWrite(doPin_blokada, HIGH);
+			digitalWrite(BLOKADA_PTT_PIN, HIGH);
 		}
 		if (not (TemperaturaTranzystoraMaxValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or ImaxValue or TermostatValue or not genOutputEnable))
 		{
-			digitalWrite(doPin_blokada, LOW);
+			digitalWrite(BLOKADA_PTT_PIN, LOW);
 		}
+		*/
 	}
 	else
 	{
@@ -1046,7 +1139,7 @@ void loop()
 			txRxBox.setColorBack(VGA_GREEN);
 			txRxBox.setText("OPR");
 		}
-		digitalWrite(doPin_blokada, LOW);
+		digitalWrite(BLOKADA_PTT_PIN, LOW);
 	}
 
 	//-----------------------------------------------------------------------------
@@ -1080,6 +1173,21 @@ void loop()
 
 
 	GD.swap();
+
+	if (byla_zmiana && (millis() - czas_zmiany > CZAS_REAKCJI))
+	{
+	    EEPROM.write(31, current_band);		// writing current band into eeprom
+	    EEPROM.write(32, mode);			// zapis trybu (manual/auto)
+		byla_zmiana = false;
+#ifdef DEBUG
+		Serial1.println("writing current settings to EEPROM: ");
+		Serial1.print("current_band: ");
+		Serial1.println(current_band);
+		Serial1.print("mode: ");
+		Serial1.println(mode);
+#endif
+	}
+
 #ifdef CZAS_PETLI
 	PORTD ^= (1<<PD2);		// nr portu na sztywno! = D19 -> RxD1; czas na razie 18ms
 #else
@@ -1175,15 +1283,15 @@ void printNumF(float value, byte dec, int x, int y, byte font)
     sprintf(work_str,"%1u.%01u", jedno, sub);
     GD.cmd_text(x, y, font, 0, work_str);
 }
-float getTemperatura(uint8_t pin)
+float getTemperatura0(uint8_t pin)
 {
 	int t_in = analogRead(pin);
 	float temp = Vref*100.0*t_in/1023;
 #ifdef DEBUG
-	Serial.print("t_in: ");
-	Serial.println(t_in);
-	Serial.print("temp: ");
-	Serial.println(temp);
+	Serial1.print("t_in: ");
+	Serial1.println(t_in);
+	Serial1.print("temp: ");
+	Serial1.println(temp);
 #endif
 	return temp;
 }
@@ -1198,12 +1306,22 @@ void read_inputs()
 {
 	//-----------------------------------------------------------------------------
 	// Read all inputs
-	forwardValue = analogRead(FWD_PIN);
-	pwrForwardValue = sq(forwardValue * pwrForwardFactor) / 50;
-	returnValue = analogRead(REF_PIN);
-	pwrReturnValue = sq(returnValue * pwrReturnFactor) / 50;
-	temperaturValueI1 = getTempInt(TEMP1_PIN);
+	//forwardValue = analogRead(FWD_PIN);
+	//pwrForwardValue = sq(forwardValue * pwrForwardFactor) / 50;
+	get_pwr();
+	//pwrForwardValue = PWR;
+	// returnValue = analogRead(REF_PIN);
+	// pwrReturnValue = sq(returnValue * pwrReturnFactor) / 50;
+#ifdef DEBUGi
+	Serial1.print("forwardValue: ");
+	Serial1.println(forwardValue);
+	//Serial1.print("returnValue: ");
+	//Serial1.println(returnValue);
+#endif
+	// temperaturValueI1 = getTempInt(TEMP1_PIN);
+	temperaturValueI1 = getTemperatura(TEMP1_PIN, Rf1);		// z termistora na tranzystorze Q1
 	temperaturValueI2 = getTempInt(TEMP2_PIN);
+	temperaturValueI2 = 17;	// tymczasowa atrapa
 	temperaturValueI3 = getTempInt(TEMP3_PIN);
 	pttValue = not digitalRead(WE_PTT_PIN);					// aktywny stan niski
 	pa1AmperValue = (analogRead(IDD_PIN) - pa1AmperOffset)*pa1AmperFactor;
@@ -1211,10 +1329,9 @@ void read_inputs()
 		pa1AmperValue = 0;
 	/*
 	 * informacja o przekroczeniu IDD jest brana z zabezpieczenia prądowego -> gdy zadziała komparator i ustawi przerzutnik:
-	 * aktywny stan niski
+	 * aktywny stan wysoki
 	 */
-	ImaxValue = not digitalRead(ALARM_OD_IDD_PIN);
-
+	ImaxValue = digitalRead(ALARM_OD_IDD_PIN);
 
 	/*
 	forwardValue = analogRead(aiPin_pwrForward);
@@ -1230,8 +1347,6 @@ void read_inputs()
 	temperaturValue2 = getTemperatura(aiPin_temperatura2, Rf2);
 	temperaturValue3 = getTemperatura(aiPin_temperatura3, Rf3);
 
-	pttValue = not digitalRead(diPin_ptt);					// aktywny stan niski
-	stbyValue = digitalRead(diPin_stby);					// aktywny stan wysoki
 	ImaxValue = not digitalRead(diPin_Imax);				// aktywny stan niski
 	PmaxValue = not digitalRead(diPin_Pmax);				// aktywny stan niski
 	SWRmaxValue = not (digitalRead(diPin_SWRmax) or digitalRead(diPin_blok_Alarm_SWR));			// aktywny stan niski (dla diPin_SWRmax)
@@ -1297,4 +1412,159 @@ float calc_SWR(int forward, int ref)
 		swr = 1;
 	}
 	return swr;
+}
+int getTemperatura(uint8_t pin, int Rf)
+{
+	int T;
+	float R = 0.0;
+	int u = analogRead(pin);
+	float U = Vref*u/1023;
+	R = Rf*U/(Uref - U);
+	T = (int)(1/(log(R/R25)/beta + 1/298.15) - 273.15 + 0.5);
+#ifdef DEBUGi
+	Serial1.print("analogRead: ");
+	Serial1.println(u);
+	Serial1.print("U: ");
+	Serial1.println(U);
+	Serial1.print("R: ");
+	Serial1.println(R);
+	Serial1.print("T: ");
+	Serial1.println(T);
+#endif
+	return T;
+}
+int get_forward()
+{
+    int forward;
+    forward = analogRead(FWD_PIN);
+    return forward * 4.883; // zwraca napięcie w mV
+}
+int get_reverse()
+{
+	int reverse;
+	reverse = analogRead(REF_PIN);
+	return reverse*4.883; // zwraca napięcie w mV
+}
+void get_pwr()
+{
+    long Forward, Reverse;
+    float p;
+    //
+    Forward = get_forward();
+    Reverse = get_reverse();
+#ifdef DEBUG
+    if (Forward > 0)
+    {
+    Serial.print("Forward: ");
+    Serial.println(Forward);
+    }
+    if (Reverse > 0)
+    {
+    Serial.print("Reverse: ");
+    Serial.println(Reverse);
+    }
+#endif
+    p = correction(Forward * 3);
+#ifdef DEBUGi
+    if (p > 0)
+    {
+    Serial.print("p: ");
+    Serial.println(p);
+    }
+#endif
+
+    if (Reverse >= Forward)
+        Forward = 999;
+    else
+    {
+        Forward = ((Forward + Reverse) * 100) / (Forward - Reverse);
+        Serial.print("Forward2: ");
+        Serial.println(Forward);
+
+        if (Forward > 999)
+            Forward = 999;
+    }
+    // odtąd Forward to jest wyliczony lub ustalony SWR!
+    //
+    p = p * K_Mult / 1000.0; // mV to Volts on Input
+    p = p / 1.414;
+    p = p * p / 50; // 0 - 1500 ( 1500 Watts)
+    p = p + 0.5; // rounding to 0.1 W
+    //
+    PWR = p;
+#ifdef DEBUGi
+    if (PWR > 0)
+    {
+    Serial.print("PWR: ");
+    Serial.println(PWR);
+    }
+#endif
+    if (PWR < 5)
+        SWR = 1;
+    else if (Forward < 100)
+        SWR = 999;
+    else
+        SWR = Forward;
+#ifdef DEBUG
+    if (PWR > 50)
+    {
+        Serial.print("SWR: ");
+        Serial.println(SWR);
+    }
+#endif
+    return;
+}
+int correction(int input)
+{
+    if (input <= 80)
+        return 0;
+    if (input <= 171)
+        input += 244;
+    else if (input <= 328)
+        input += 254;
+    else if (input <= 582)
+        input += 280;
+    else if (input <= 820)
+        input += 297;
+    else if (input <= 1100)
+        input += 310;
+    else if (input <= 2181)
+        input += 430;
+    else if (input <= 3322)
+        input += 484;
+    else if (input <= 4623)
+        input += 530;
+    else if (input <= 5862)
+        input += 648;
+    else if (input <= 7146)
+        input += 743;
+    else if (input <= 8502)
+        input += 800;
+    else if (input <= 10500)
+        input += 840;
+    else
+        input += 860;
+    //
+    return input;
+}
+void switch_bands()
+{
+#ifdef D_BAND
+	Serial.print("prev_band: ");
+	Serial.println(pasma[prev_band]);
+	Serial.print("current_band: ");
+	Serial.println(pasma[current_band]);
+#endif
+	if (Band_PIN[current_band] != Band_PIN[prev_band])
+	{
+		if (prev_band != BAND_160)
+		{
+			digitalWrite(Band_PIN[prev_band], LOW);
+		}
+		if (current_band != BAND_160)
+		{
+			digitalWrite(Band_PIN[current_band], HIGH);
+		}
+	}
+	prev_band = current_band;
 }

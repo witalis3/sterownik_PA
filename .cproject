@@ -19,46 +19,31 @@
 							<builder buildPath="${workspace_loc:/helou}/Release" id="io.sloeber.sketch.builder.1970508361" keepEnvironmentInBuildfile="false" managedBuildOn="true" name="Arduino sketch builder" superClass="io.sloeber.sketch.builder"/>
 							<tool id="io.sloeber.tool.sketch.compiler.cpp.2090385739" name="Arduino C++ Compiler" superClass="io.sloeber.tool.sketch.compiler.cpp">
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="io.sloeber.compiler.cpp.sketch.option.incpath.1949962110" name="Include Paths (-I)" superClass="io.sloeber.compiler.cpp.sketch.option.incpath" valueType="includePath">
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/helou/core/core}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/helou/core/variant}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/helou/libraries/SPI/src}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/helou/libraries/EEPROM/src}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/helou/libraries/GD3}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_6m/core/core}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_6m/core/variant}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_6m/libraries/EEPROM/src}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_6m/libraries/GD3}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_6m/libraries/SPI/src}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_FT810/core/core}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_FT810/core/variant}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_FT810/libraries/EEPROM/src}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_FT810/libraries/GD3}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_FT810/libraries/SPI/src}&quot;"/>
 								</option>
 								<inputType id="io.sloeber.compiler.cpp.sketch.input.760467250" name="CPP source files" superClass="io.sloeber.compiler.cpp.sketch.input"/>
 							</tool>
 							<tool id="io.sloeber.tool.compiler.c.1736738311" name="Arduino C Compiler" superClass="io.sloeber.tool.compiler.c">
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="io.sloeber.compiler.c.sketch.option.incpath.678283478" name="Include Paths (-I)" superClass="io.sloeber.compiler.c.sketch.option.incpath" valueType="includePath">
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/helou/core/core}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/helou/core/variant}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/helou/libraries/SPI/src}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/helou/libraries/EEPROM/src}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/helou/libraries/GD3}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_6m/core/core}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_6m/core/variant}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_6m/libraries/EEPROM/src}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_6m/libraries/GD3}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_6m/libraries/SPI/src}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_FT810/core/core}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_FT810/core/variant}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_FT810/libraries/EEPROM/src}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_FT810/libraries/GD3}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_FT810/libraries/SPI/src}&quot;"/>
 								</option>
 								<inputType id="io.sloeber.compiler.c.sketch.input.863495173" name="C Source Files" superClass="io.sloeber.compiler.c.sketch.input"/>
 							</tool>
 							<tool id="io.sloeber.tool.sketch.compiler.s.1997515153" name="Arduino Assembler" superClass="io.sloeber.tool.sketch.compiler.s">
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="io.sloeber.compiler.asm.sketch.option.incpath.150657453" name="Include Paths (-I)" superClass="io.sloeber.compiler.asm.sketch.option.incpath" valueType="includePath">
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/helou/core/core}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/helou/core/variant}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/helou/libraries/SPI/src}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/helou/libraries/EEPROM/src}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/helou/libraries/GD3}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_6m/core/core}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_6m/core/variant}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_6m/libraries/EEPROM/src}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_6m/libraries/GD3}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_6m/libraries/SPI/src}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_FT810/core/core}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_FT810/core/variant}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_FT810/libraries/EEPROM/src}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_FT810/libraries/GD3}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_FT810/libraries/SPI/src}&quot;"/>
 								</option>
 								<inputType id="io.sloeber.compiler.S.sketch.input.1899714968" name="Assembly source files" superClass="io.sloeber.compiler.S.sketch.input"/>
 							</tool>
