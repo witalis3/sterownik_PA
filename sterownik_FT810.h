@@ -10,7 +10,8 @@
 
 #define DEBUG		// na RxD1 TxD1 (złącze J7 RS232)
 //#define CZAS_PETLI		// wyklucza użycie gniazda RS232
-#define ACS712
+//#define ACS712
+#define ACS713
 
 /*
  * wejścia/wyjścia cyfrowe:
@@ -52,7 +53,10 @@
 
 #define thresholdTemperaturAirOn1   45
 #define thresholdTemperaturTransistorMax	70		// temperatura tranzystora (z termistora nr 1), przy której PA jest blokowane - STBY
-
+#ifdef ACS713
+#define pa1AmperFactor (inputFactorVoltage * (30/4.0))    // 133mV/A -> 7.5A/V; ACS713 30A, Vout od 0.5V do 4.5V
+#define pa1AmperOffset (1023/5 * 0.512)                     // 0.5V z czujnika Hallla dla Idd = 0A -> zmierzyć i wstawić
+#else
 #ifdef ACS712
 #define pa1AmperFactor (inputFactorVoltage * (30/2.0))    // 66mV/A -> 15A/V; ACS712 30A
 #define pa1AmperOffset (1023/5 * 2.487)                     // 2.5V z czujnika Hallla -> zmierzyć i wstawić
@@ -60,7 +64,7 @@
 #define pa1AmperFactor (inputFactorVoltage * (22.0/5.0))    // 3k Ris w BTS50085
 #define pa1AmperOffset (0.0)                     // 0.0V	- pomiar z BTS50085 - od zera
 #endif
-
+#endif
 
 // VGA color palette: https://www.rapidtables.com/web/color/RGB_Color.html
 #define VGA_BLACK		0x000000
