@@ -1,4 +1,4 @@
-# sterownik_PA_6m
+# sterownik_PA
 Sterownik PA:
 - wyświetlanie parametrów
   - temperatura tranzystorów i radiatora
