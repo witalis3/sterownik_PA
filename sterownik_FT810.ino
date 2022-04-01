@@ -8,7 +8,7 @@
 /* schemat sterownika: PA_500W->PA_500W_3->sterownik->sterownik_FT810
  *
  * ToDo
- * 	- przełączanie pasm
+ *  - brak wartości szczytowych
  * 		- blokada przełączania pasm podczas nadawania
  * 	- czekanie na puszczenie dotyku ??
  * 	- obsługa WY_ALARMU_PIN
@@ -18,7 +18,9 @@
  * 		- komunikat error
  * 			- za krótki (za mała czcionka?)
  * 			- nie wyśrodkowany w pionie
- *  	- wartości szczytowe znikają
+ * ver 1.0.4
+ * 	- możliwość ręcznego uruchomienia wentylatora
+ * 	- przełączanie pasm na podstawie kodu DCBA z portu Band Data
  * ver 1.0.3
  * 	- przełączanie pasm
  *	- pamięć mode i pasma: EEPROM
@@ -100,9 +102,11 @@ byte AutoBandIdx = 15;
 #define CZAS_REAKCJI	1000		// the time [ms] after which the writing into EEPROM takes place
 boolean byla_zmiana = false;
 unsigned long czas_zmiany;
+boolean airBox1Manual = false;
 unsigned long timeAtCycleStart, timeAtCycleEnd, timeStartMorseDownTime,
 		actualCycleTime, timeToogle500ms = 0;
-#define cycleTime        200
+#define cycleTime        200		// kompromis pomiędzy szybką odpowiedzią linijki a skakaniem odczytów ToDo rozdzielić?
+// ToDo nowy czas do czytania dotyku
 bool toogle500ms;
 
 
@@ -176,6 +180,23 @@ int Rf1 = 2700;				// rezystancja rezystora szeregowego z termistorem -> zmierzy
  */
 int PWR, SWR;
 byte K_Mult = 24;	// ilość zwojów w transformatorze direct couplera
+
+union swaper
+{
+	byte bajt;
+	struct
+	{
+		unsigned char b0 :1;
+		unsigned char b1 :1;
+		unsigned char b2 :1;
+		unsigned char b3 :1;
+		unsigned char b4 :1;
+		unsigned char b5 :1;
+		unsigned char b6 :1;
+		unsigned char b7 :1;
+	} bit;
+};
+
 
 /*
  * button czuły na dotyk bez tekstu i grafiki
@@ -823,6 +844,9 @@ void setup()
 	}
 	switch_bands();
 
+	pinMode(18, OUTPUT);
+	digitalWrite(18, LOW);
+
 	pinMode(WY_ALARMU_PIN, OUTPUT);
 	digitalWrite(WY_ALARMU_PIN, LOW);
 	pinMode(ALARM_OD_IDD_PIN, INPUT);
@@ -853,6 +877,11 @@ void setup()
 	pinMode(LPF6_PIN, OUTPUT);
 	pinMode(LPF7_PIN, OUTPUT);
 
+	pinMode(BAND0_PIN, INPUT);
+	pinMode(BAND1_PIN, INPUT);
+	pinMode(BAND2_PIN, INPUT);
+	pinMode(BAND3_PIN, INPUT);
+
 	pinMode(PDPin, OUTPUT);
 	digitalWrite(PDPin, HIGH);
 	delay(20);
@@ -866,7 +895,7 @@ void setup()
 	//LOAD_ASSETS();
 	GD.ClearColorRGB(0x103000);
 	GD.Clear();
-	GD.cmd_text(GD.w / 2, GD.h / 2, 31, OPT_CENTER, "Sterownik PA ver. 1.0.3");
+	GD.cmd_text(GD.w / 2, GD.h / 2, 31, OPT_CENTER, "Sterownik PA ver. 1.0.4");
 	GD.swap();
 	delay(500);
 
@@ -951,27 +980,45 @@ void loop()
 	pa1AmperBox.setFloat(pa1AmperValue, 1, 4, true);
 	// temperatura1 i temperatura2 i wentylator1
 	//if (temperaturValueI1 >= thresholdTemperaturAirOn1 or temperaturValueI2 >= thresholdTemperaturAirOn1)
+	// temperaturValueI3 - temperatura radiatora
 	if (temperaturValueI3 >= thresholdTemperaturAirOn1)
 	{
 		airBox1.setText("ON");
-		isFanOn = true;
-		FanController(1);
+		//isFanOn = true;
+		if (not isFanOn)
+		{
+			FanController(1);
+		}
 	}
 	//else if ((temperaturValueI1 <= thresholdTemperaturAirOn1 - 3) and (temperaturValueI2 <= thresholdTemperaturAirOn1 - 3))
 	else if (temperaturValueI3 <= thresholdTemperaturAirOn1 - 3)
 	{
-		airBox1.setText("OFF");
-		isFanOn = false;
-		FanController(0);
+		if (airBox1Manual)
+		{
+			airBox1.setText("ON");
+			if (not isFanOn)
+			{
+				FanController(1);
+			}
+		}
+		else
+		{
+			airBox1.setText("OFF");
+			if (isFanOn)
+			{
+				FanController(0);
+			}
+		}
 	}
-	else
+	else	// ToDo co to jest ????
 	{
 		if (isFanOn)
 			airBox1.setText("ON");
 		else
 			airBox1.setText("OFF");
 	}
-	// ToDo dubel kontroli temperatury: jest już kontrola w InfoBox
+
+	// ToDo dubel kontroli temperatury: jest już kontrola w InfoBox; ale co z kontrolą spadku temperatury?
 	if (temperaturValueI1 > thresholdTemperaturTransistorMax or temperaturValueI2 > thresholdTemperaturTransistorMax)	// przekroczenie temperatury granicznej obudowy jednego z tranzystorów
 	{
 		TemperaturaTranzystoraMaxValue = true;
@@ -1012,41 +1059,44 @@ void loop()
 #ifdef DEBUG
 		Serial1.println(inputsTag);
 #endif
-		// pasmo w dół
-		if (Down.isTouchInside(inputsTag))
+		if (mode == MANUAL)
 		{
-			if (current_band == BAND_160)
+			// pasmo w dół
+			if (Down.isTouchInside(inputsTag))
 			{
-				current_band = BAND_NUM - 1;
-			}
-			else
-			{
-				current_band--;
-			}
-			byla_zmiana = true;
-			czas_zmiany = millis();
-			switch_bands();
+				if (current_band == BAND_160)
+				{
+					current_band = BAND_NUM - 1;
+				}
+				else
+				{
+					current_band--;
+				}
+				byla_zmiana = true;
+				czas_zmiany = millis();
+				switch_bands();
 #ifdef DEBUG
 			Serial1.println("Down");
 #endif
-		}
-		// pasmo w górę
-		if (Up.isTouchInside(inputsTag))
-		{
-			if (current_band == BAND_6)
-			{
-				current_band = BAND_160;
 			}
-			else
+			// pasmo w górę
+			if (Up.isTouchInside(inputsTag))
 			{
-				current_band++;
-			}
-			byla_zmiana = true;
-			czas_zmiany = millis();
-			switch_bands();
+				if (current_band == BAND_6)
+				{
+					current_band = BAND_160;
+				}
+				else
+				{
+					current_band++;
+				}
+				byla_zmiana = true;
+				czas_zmiany = millis();
+				switch_bands();
 #ifdef DEBUG
 			Serial1.println("Up");
 #endif
+			}
 		}
 		// zmiana trybu zmiany pasma
 		if (modeBox.isTouchInside(inputsTag))
@@ -1072,6 +1122,19 @@ void loop()
 			else
 			{
 				stbyValue = true;
+			}
+		}
+		if (airBox1.isTouchInside(inputsTag))
+		{
+			if (airBox1Manual)
+			{
+				airBox1.setText("OFF");
+				airBox1Manual = false;
+			}
+			else
+			{
+				airBox1.setText("ON");
+				airBox1Manual = true;
 			}
 		}
 		if (msgBox.isTouchInside(inputsTag))
@@ -1144,6 +1207,12 @@ void loop()
 
 	//-----------------------------------------------------------------------------
 	// Write to outputs
+	if (mode == AUTO)
+	{
+		// na razie przy każdym obiegi pętli; docelowo co np. 200ms
+		current_band = readDataPort();
+		switch_bands();
+	}
 	if ((ImaxValue or TermostatValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or TemperaturaTranzystoraMaxValue or not genOutputEnable)  and toogle500ms)
 	{
 		digitalWrite(doPin_errLED, LOW);
@@ -1188,8 +1257,9 @@ void loop()
 #endif
 	}
 
+	//PORTD ^= (1<<PD3);		// D18 -> TxD1; do pomiaru czasu pętli podczas normalnej pracy
 #ifdef CZAS_PETLI
-	PORTD ^= (1<<PD2);		// nr portu na sztywno! = D19 -> RxD1; czas na razie 18ms
+	PORTD ^= (1<<PD2);		// nr portu na sztywno! = D19 -> RxD1; czas na razie 19,9ms
 #else
 	// Keep the cycle time constant
 	timeAtCycleEnd = millis();
@@ -1364,24 +1434,24 @@ void FanController(byte co)
 			isFanOn = false;
 			break;
 		case 1:
-			digitalWrite(FAN_ON_PIN, HIGH);
 			digitalWrite(FAN1_PIN, HIGH);
 			digitalWrite(FAN2_PIN, LOW);
 			digitalWrite(FAN3_PIN, LOW);
+			digitalWrite(FAN_ON_PIN, HIGH);
 			isFanOn = true;
 			break;
 		case 2:
-			digitalWrite(FAN_ON_PIN, HIGH);
 			digitalWrite(FAN1_PIN, LOW);
 			digitalWrite(FAN2_PIN, HIGH);
 			digitalWrite(FAN3_PIN, LOW);
+			digitalWrite(FAN_ON_PIN, HIGH);
 			isFanOn = true;
 			break;
 		case 3:
-			digitalWrite(FAN_ON_PIN, HIGH);
 			digitalWrite(FAN1_PIN, LOW);
 			digitalWrite(FAN2_PIN, LOW);
 			digitalWrite(FAN3_PIN, HIGH);
+			digitalWrite(FAN_ON_PIN, HIGH);
 			isFanOn = true;
 			break;
 		default:
@@ -1567,4 +1637,82 @@ void switch_bands()
 		}
 	}
 	prev_band = current_band;
+}
+byte readDataPort()
+{
+    /*
+     *
+    DataPort Codes
+    Band    Code
+            DCBA
+    160m    0001
+    80m     0010    // 3,8 MHz
+    40m     0011
+    30m     0100
+    20m     0101
+    17m     0110
+    15m     0111
+    12m     1000
+    10m     1001
+    6m      1010
+    60m     1011
+
+    80m     1100    // 3,5MHz na pasmo 80m dwa kody -> dla skrzynki antenowej -> dwa ustawienia
+
+    D -> BAND3
+    C -> BAND2
+    B -> BAND1
+    A -> BAND0
+     */
+    swaper band;
+    byte bandCode;
+    byte kod;
+    band.bit.b0 = digitalRead(BAND0_PIN);
+    band.bit.b1 = digitalRead(BAND1_PIN);
+    band.bit.b2 = digitalRead(BAND2_PIN);
+    band.bit.b3 = digitalRead(BAND3_PIN);
+    bandCode = (~band.bajt) & 0x0F;
+    switch (bandCode)
+    {
+		case 1:
+			kod = BAND_160;
+			break;
+		case 2:
+			kod = BAND_80;
+			break;
+		case 3:
+			kod = BAND_40;
+			break;
+		case 4:
+			kod = BAND_30;
+			break;
+		case 5:
+			kod = BAND_20;
+			break;
+		case 6:
+			kod = BAND_17;
+			break;
+		case 7:
+			kod = BAND_15;
+			break;
+		case 8:
+			kod = BAND_12;
+			break;
+		case 9:
+			kod = BAND_10;
+			break;
+		case 10:
+			kod = BAND_6;
+			break;
+		case 11:
+			kod = BAND_60;
+			break;
+		case 12:
+			kod = BAND_80;
+			break;
+		default:
+			kod = BAND_80;
+			break;
+	}
+    return kod;
 }

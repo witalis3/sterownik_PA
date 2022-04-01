@@ -8,7 +8,7 @@
 #ifndef STEROWNIK_FT81X_H_
 #define STEROWNIK_FT81X_H_
 
-#define DEBUG		// na RxD1 TxD1 (złącze J7 RS232)
+//#define DEBUG		// na RxD1 (złącze J7 RS232 PIN 3)
 //#define CZAS_PETLI		// wyklucza użycie gniazda RS232
 //#define ACS712
 #define ACS713
@@ -37,6 +37,12 @@
 #define FAN2_PIN			11	// drugi bieg wentylatora
 #define FAN3_PIN			10	// trzeci bieg wentylatora
 #define CZAS_PETLI_PIN		19	// RxD1 PD2
+
+// wejścia do dekodowania pasm (sygnały z TRXa)
+#define BAND0_PIN			29	// bit0 <-> A
+#define BAND1_PIN			31	// bit1 <-> B
+#define BAND2_PIN			30	// bit2 <-> C
+#define BAND3_PIN			32	// bit3 <-> D
 
 #define doPin_errLED      	47	// dioda wystąpienia jakiegoś błędu - aktywny stan wysoki (jest tranzystor na wyjściu)? -
 								// jak jest błąd - stan wysoki i mruga; u mnie brak diody
@@ -108,5 +114,6 @@ int get_reverse();
 void get_pwr();
 int correction(int input);
 void switch_bands();
+byte readDataPort();
 
 #endif /* STEROWNIK_FT81X_H_ */
