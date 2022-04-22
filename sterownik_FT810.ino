@@ -8,8 +8,7 @@
 /* schemat sterownika: PA_500W->PA_500W_3->sterownik->sterownik_FT810
  *
  * ToDo
- *  - brak wartości szczytowych
- * 		- blokada przełączania pasm podczas nadawania
+ * 	- blokada przełączania pasm podczas nadawania
  * 	- czekanie na puszczenie dotyku ??
  * 	- obsługa WY_ALARMU_PIN
  * 		- obsługa wyjścia WY_ALARMU_PIN -> powoduje odcięcie zasilania (np. przy alarmie)
@@ -22,6 +21,7 @@
  * 	- możliwość ręcznego uruchomienia wentylatora
  * 	- przełączanie pasm na podstawie kodu DCBA z portu Band Data
  * 	- pomiar temperatury na termistorach
+ * 	- obsługa wartości szczytowych mocy i SWR
  * ver 1.0.3
  * 	- przełączanie pasm
  *	- pamięć mode i pasma: EEPROM
@@ -290,10 +290,6 @@ public:
 	void init()
 	{
 		// Called by main setup
-		//myGLCD.setBackColor(_colorBack);
-		//myGLCD.setColor(_colorBack);
-		//myGLCD.fillRect(_xPos, _yPos, _xPos + _width, _yPos + _height);
-
 		// Background
 		GD.Tag(_tag);
 		GD.Begin(RECTS);
@@ -325,8 +321,6 @@ public:
 		int titleLength = String(_tytul).length();
 		GD.cmd_text(_xPos - translateX + (_width - titleLength * titleFontXsize) - _xPadding, _yPos + _yPadding + 1, SmallFont, 0, _tytul);
 		// Unit
-//		int unitFontXsize = getFontXsize(franklingothic_normal);
-	//	int unitFontYsize = getFontYsize(franklingothic_normal);
 		int unitFontXsize = getFontXsize(SmallFont);
 		int unitFontYsize = getFontYsize(SmallFont);
 		int unitLength = String(_unit).length();
@@ -355,13 +349,11 @@ public:
 	void setFloat(float value, int dec, int length, bool show)
 	{
 		// dec ile po przecinku, lenght długość całkowita
-		//if ((value != _value) or _drawLater) -> brak wyświetlania ...
 		if (true)
 		{
 		    char work_str[7];
 			_value = value;
 			GD.ColorRGB(_colorBack);
-
 			if (value < _minValue or value > _maxValue)
 			{
 				GD.ColorRGB(VGA_RED);
@@ -378,86 +370,37 @@ public:
 				_raisedError = false;
 				GD.ColorRGB(_colorValue);
 			}
-
 			if (show)
 			{
-			    //indu = _value;
-			    //indu_sub = (int) _value % 10;
-			    //sprintf(work_str,"%2u.%01u", indu, indu_sub);
-			    //sprintf(work_str, "%f", _value);
 			    dtostrf(_value, 5, 1, work_str);
-			    //String dane = String(_value, 1);
 			    GD.cmd_text(_xPos + _xPadding, _yPos + _yPadding, _font, 0, work_str);
-			    //GD.cmd_text(_xPos, _yPos, _font, OPT_CENTER, work_str);
-			    //GD.cmd_number(_xPos + _xPadding, _yPos + _yPadding, _font, 0, _value);
-
-				_drawLater = false;
-			}
-			else
-			{
-				_drawLater = true;
 			}
 		}
 	}
 
 	void setInt(int value, int length, bool show)
 	{
-		//if ((value != _value) or _drawLater)
-		if (true)
+		_value = value;
+		GD.ColorRGB(_colorBack);
+		if (value < _minValue or value > _maxValue)
 		{
-			_value = value;
-
-			//myGLCD.setBackColor(_colorBack);
-			GD.ColorRGB(_colorBack);
-
-			if (value < _minValue or value > _maxValue)
+			GD.ColorRGB(VGA_RED);
+			if (_raisedError == false and errorString == "")
 			{
-				GD.ColorRGB(VGA_RED);
-				if (_raisedError == false and errorString == "")
-				{
-					_raisedError = true;
-					errorString = "Error: " + String(_tytul) + " " + _value + String(_unit)
-							+ " outside range of " + int(_minValue) + _unit
-							+ "-" + int(_maxValue) + _unit;
-				}
+				_raisedError = true;
+				errorString = "Error: " + String(_tytul) + " " + _value + String(_unit)
+						+ " outside range of " + int(_minValue) + _unit
+						+ "-" + int(_maxValue) + _unit;
 			}
-			else
-			{
-				_raisedError = false;
-				GD.ColorRGB(_colorValue);
-			}
-
-			if (show)
-			{
-				//myGLCD.setFont(_font);
-				//myGLCD.printNumI(_value, _xPos + _xPadding, _yPos + _yPadding,
-					//	length);
-				int work_int = _value;
-				char work_str[7];
-				if (work_int >= 1000)
-				{
-					sprintf(work_str,"C=%4up", work_int);
-				}
-				else if (work_int >= 100)
-				{
-					sprintf(work_str,"C= %3up", work_int);
-				}
-				else if (work_int >= 10)
-				{
-					sprintf(work_str,"C=  %2up", work_int);
-				}
-				else
-				{
-					sprintf(work_str,"C=   %1up", work_int);
-				}
-				//GD.cmd_text(_xPos + _xPadding, _yPos + _yPadding, _font, 0, work_str);
-				GD.cmd_number(_xPos + _xPadding, _yPos + _yPadding, _font, 0, _value);
-				_drawLater = false;
-			}
-			else
-			{
-				_drawLater = true;
-			}
+		}
+		else
+		{
+			_raisedError = false;
+			GD.ColorRGB(_colorValue);
+		}
+		if (show)
+		{
+			GD.cmd_number(_xPos + _xPadding, _yPos + _yPadding, _font, 0, _value);
 		}
 	}
 	void setText(const char *text)
@@ -593,8 +536,8 @@ public:
 		if (nowe)
 		{
 			//                               title    unit     xPos           yPos              height  width, minValue, maxValue,  colorValue       colorBack             font
-			ptrActBox = new InfoBox("", _unit, xPosInfoBox, yPosInfoBox, 32, 125, 0, _maxValue, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 16);
-			ptrMaxBox = new InfoBox("PEP", _unit, xPosInfoBox, yPosInfoBox + 32, 32, 125, 0, _maxValue, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 17);
+			ptrActBox = new InfoBox("", _unit, xPosInfoBox, yPosInfoBox, 32, 125, 0, _maxValue, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, _tag + 1);
+			ptrMaxBox = new InfoBox("PEP", _unit, xPosInfoBox, yPosInfoBox + 32, 32, 125, 0, _maxValue, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, _tag + 2);
 		}
 
 		ptrActBox->init();
@@ -602,7 +545,7 @@ public:
 
 		//        xPos,     yPos,           height,  width
 		drawScale(_xPosBar, _yPosBar - 18, 15, _widthBar);
-		/* ToDo ??
+		/* ToDo co to jest??
 		myGLCD.drawRect(_xPosBar, _yPosBar, _xPosBar + _widthBar,
 				_yPosBar + _heightBar);
 		_xPosBar = _xPosBar + 1;
@@ -623,26 +566,19 @@ public:
 	void drawScale(int xPos, int yPos, int height, int width)
 	{
 		// Draw the scale with value and warning levels
-		//myGLCD.setColor(vgaValueColor);
-
 		// Horizontal base line
-		//myGLCD.fillRect(xPos, yPos + height - 2, xPos + width, yPos + height);
 		fillRect(xPos, yPos + height - 2, xPos + width, yPos + height, vgaValueColor);
 		// Draw warning level
 		int warningLevel1 = (_warnValue1 - _minValue) / _rangeValue * _widthBar;
 		int warningLevel2 = (_warnValue2 - _minValue) / _rangeValue * _widthBar;
-		//myGLCD.setColor(VGA_YELLOW);
 		fillRect(xPos + warningLevel1, yPos + height - 1,
 				xPos + warningLevel2, yPos + height, VGA_YELLOW);
 		//fillRect(xPos + warningLevel1, yPos + height - 1, )
-		//myGLCD.setColor(VGA_RED);
 		fillRect(xPos + warningLevel2, yPos + height - 1, xPos + width,
 				yPos + height, VGA_RED);
 
 		// Draw helplines and values
-		//myGLCD.setColor(vgaValueColor);
 		GD.ColorRGB(vgaValueColor);
-		//myGLCD.setFont(SmallFont);
 
 		float xPosHelpline;
 		float helpValue;
@@ -660,8 +596,6 @@ public:
 				if (helpValue <= 10 && helpValue > 0)
 				{
 					// Small values as float with 1 dec
-					//myGLCD.printNumF(helpValue, 1, xPosHelpline + 3, yPos);
-					//printNumI(helpValue, xPosHelpline + 3, yPos, SmallFont);
 					printNumF(helpValue, 1, xPosHelpline + 3, yPos, SmallFont);
 				}
 				else
@@ -703,11 +637,12 @@ public:
 
 		// Update the bar
 		_value = value;
-		if (_showMax)
+		//if (_showMax) ??
+		if (show)
 		{
 			setValueMax(_value);
 		}
-
+		// ToDo ??
 		if (show)
 		{
 			_showMax = true;
@@ -723,20 +658,6 @@ public:
 		{
 			_level = _widthBar;
 		}
-		/*
-		if (_level > _levelOld)
-		{
-			//myGLCD.setColor(_colorBar);
-			//myGLCD.fillRect(_xPosBar + _levelOld, _yPosBar, _xPosBar + _level, _yPosBar + _heightBar);
-			fillRect(_xPosBar + _levelOld, _yPosBar, _xPosBar + _level, _yPosBar + _heightBar, _colorBar);
-		}
-		else
-		{
-			//myGLCD.setColor(_colorBack);
-			//myGLCD.fillRect(_xPosBar + _level, _yPosBar, _xPosBar + _levelOld,_yPosBar + _heightBar);
-			fillRect(_xPosBar + _level, _yPosBar, _xPosBar + _levelOld,_yPosBar + _heightBar, _colorBack);
-		}
-		*/
 		// za każdym razem malujemy całość
 		fillRect(_xPosBar, _yPosBar, _xPosBar + _level, _yPosBar + _heightBar, _colorBar);
 		fillRect(_xPosBar + _level, _yPosBar, _xPosBar + _widthBar, _yPosBar + _heightBar, _colorBack);
@@ -751,22 +672,22 @@ public:
 		if (value > _valueMax)
 		{
 			_valueMax = value;
-
-			// Set the maximum value info box
-			if (value < 100)
-			{
-				ptrMaxBox->setFloat(value, 1, 4, true);
-			}
-			else
-			{
-				ptrMaxBox->setInt(value, 4, true);
-			}
+		}
+		// Set the maximum value info box
+		if (value < 100)
+		{
+			ptrMaxBox->setFloat(_valueMax, 1, 4, true);
+		}
+		else
+		{
+			ptrMaxBox->setInt(_valueMax, 4, true);
 		}
 	}
 
 	void resetValueMax()
 	{
 		_valueMax = -1;
+		ptrMaxBox->setInt(0, 4, true);
 	}
 
 	float getValue()
@@ -782,6 +703,14 @@ public:
 			//	and (y > _yPos and y < _yPos + _height));
 		return GD.inputs.tag == _tag;
 	}
+	bool isTouchInside(byte tag)
+	{
+		// Check if touch is inside this widget
+		//return ((x > _xPos and x < _xPos + _width)
+			//	and (y > _yPos and y < _yPos + _height));
+		return ptrMaxBox->isTouchInside(tag);
+	}
+
 };
 
 
@@ -816,7 +745,7 @@ InfoBox txRxBox("", "", 645, 340, 72, 135, 8, 9, vgaValueColor, vgaBackgroundCol
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 650, 195, 455, vgaBarColor, vgaBackgroundColor, 10, 18);      // Wybor zakresu do 0,65kW
 DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 600, 240, 420, vgaBarColor, vgaBackgroundColor, 10, 18);      // Wybor zakresu do 0,5kW
 
-DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackgroundColor, 16, 19);
+DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackgroundColor, 16, 21);
 
 void setup()
 {
@@ -1061,6 +990,7 @@ void loop()
 	if (inputsTag > 0 and inputsTag < 255)
 	{
 #ifdef DEBUG
+		Serial1.print("inputsTag: ");
 		Serial1.println(inputsTag);
 #endif
 		if (mode == MANUAL)
@@ -1161,6 +1091,14 @@ void loop()
 					ImaxValue = false;
 				}
 			}
+		}
+		if (pwrBar.isTouchInside(inputsTag))
+		{
+			pwrBar.resetValueMax();
+		}
+		if (swrBar.isTouchInside(inputsTag))
+		{
+			swrBar.resetValueMax();
 		}
 	}
 	//-----------------------------------------------------------------------------

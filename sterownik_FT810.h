@@ -8,7 +8,7 @@
 #ifndef STEROWNIK_FT81X_H_
 #define STEROWNIK_FT81X_H_
 
-//#define DEBUG		// na RxD1 (złącze J7 RS232 PIN 3)
+#define DEBUG		// na RxD1 (złącze J7 RS232 PIN 3)
 //#define CZAS_PETLI		// wyklucza użycie gniazda RS232
 //#define ACS712
 #define ACS713
