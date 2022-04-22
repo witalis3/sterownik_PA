@@ -21,6 +21,7 @@
  * ver 1.0.4
  * 	- możliwość ręcznego uruchomienia wentylatora
  * 	- przełączanie pasm na podstawie kodu DCBA z portu Band Data
+ * 	- pomiar temperatury na termistorach
  * ver 1.0.3
  * 	- przełączanie pasm
  *	- pamięć mode i pasma: EEPROM
@@ -105,7 +106,7 @@ unsigned long czas_zmiany;
 boolean airBox1Manual = false;
 unsigned long timeAtCycleStart, timeAtCycleEnd, timeStartMorseDownTime,
 		actualCycleTime, timeToogle500ms = 0;
-#define cycleTime        200		// kompromis pomiędzy szybką odpowiedzią linijki a skakaniem odczytów ToDo rozdzielić?
+#define cycleTime        20		// kompromis pomiędzy szybką odpowiedzią linijki a skakaniem odczytów ToDo rozdzielić?
 // ToDo nowy czas do czytania dotyku
 bool toogle500ms;
 
@@ -173,7 +174,10 @@ float Vref = 4.994;			// napięcie odniesienia dla ADC ??
 float Uref = 4.994;			// napięcie zasilające dzielnik pomiarowy temperatury
 int beta = 3500;			// współczynnik beta termistora
 int R25 = 1800;				// rezystancja termistora w temperaturze 25C
-int Rf1 = 2700;				// rezystancja rezystora szeregowego z termistorem -> zmierzyć; zapomniałem...
+int Rf1 = 1794;				// rezystancja rezystora szeregowego z termistorem -> zmierzyć przed wlutowaniem
+int Rf2 = 1798;				// rezystancja rezystora szeregowego z termistorem -> zmierzyć
+int Rf3 = 1800;				// rezystancja rezystora szeregowego z termistorem -> zmierzyć
+
 
 /* zmienne do pomiaru mocy i swr
  *
@@ -1390,9 +1394,9 @@ void read_inputs()
 #endif
 	// temperaturValueI1 = getTempInt(TEMP1_PIN);
 	temperaturValueI1 = getTemperatura(TEMP1_PIN, Rf1);		// z termistora na tranzystorze Q1
-	temperaturValueI2 = getTempInt(TEMP2_PIN);
-	temperaturValueI2 = 17;	// tymczasowa atrapa
-	temperaturValueI3 = getTempInt(TEMP3_PIN);
+	//temperaturValueI2 = getTempInt(TEMP2_PIN);
+	temperaturValueI2 = getTemperatura(TEMP2_PIN, Rf2);	// temperatura tranzystora Q2
+	temperaturValueI3 = getTemperatura(TEMP3_PIN, Rf3);	// temperatura radiatora
 	pttValue = not digitalRead(WE_PTT_PIN);					// aktywny stan niski
 	pa1AmperValue = (analogRead(IDD_PIN) - pa1AmperOffset)*pa1AmperFactor;
 	if (pa1AmperValue < 0)
