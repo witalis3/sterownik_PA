@@ -6,10 +6,12 @@
 #include <math.h>
 //#include "FranklinGothic_assets.h"
 /* schemat sterownika: PA_500W->PA_500W_3->sterownik->sterownik_FT810
+ * #define STORAGE             0   // Want SD storage? w GD3.cpp -> trochę mniejszy rozmiar wsadu
  *
  * ToDo
  * 	- blokada przełączania pasm podczas nadawania
  * 	- czekanie na puszczenie dotyku ??
+ * 	- jakaś klasa dla LPF (band)
  * 	- obsługa WY_ALARMU_PIN
  * 		- obsługa wyjścia WY_ALARMU_PIN -> powoduje odcięcie zasilania (np. przy alarmie)
  * 			- kiedy, przy którym alarmie wykonać i czy w ogóle?
@@ -38,7 +40,6 @@
  *
  *
  */
-
 
 
 // Define some colors
@@ -104,11 +105,11 @@ byte AutoBandIdx = 15;
 boolean byla_zmiana = false;
 unsigned long czas_zmiany;
 boolean airBox1Manual = false;
-unsigned long timeAtCycleStart, timeAtCycleEnd, timeStartMorseDownTime,
-		actualCycleTime, timeToogle500ms = 0;
-#define cycleTime        20		// kompromis pomiędzy szybką odpowiedzią linijki a skakaniem odczytów ToDo rozdzielić?
+unsigned long timeAtCycleStart, timeAtCycleEnd,  actualCycleTime, timeToggle500ms = 0, timeToggle200ms = 0;
+bool toggle500ms, toggle200ms;
+
+//# define cycleTime        20		// kompromis pomiędzy szybką odpowiedzią linijki a skakaniem odczytów ToDo rozdzielić?
 // ToDo nowy czas do czytania dotyku
-bool toogle500ms;
 
 
 /*
@@ -346,7 +347,7 @@ public:
 		return not _raisedError;
 	}
 
-	void setFloat(float value, int dec, int length, bool show)
+	void setFloat(float value, int dec, int length, bool show, bool ignoreMaxValue = false)
 	{
 		// dec ile po przecinku, lenght długość całkowita
 		if (true)
@@ -354,7 +355,7 @@ public:
 		    char work_str[7];
 			_value = value;
 			GD.ColorRGB(_colorBack);
-			if (value < _minValue or value > _maxValue)
+			if ((value < _minValue or value > _maxValue) and not ignoreMaxValue)
 			{
 				GD.ColorRGB(VGA_RED);
 				if (_raisedError == false and errorString == "")
@@ -378,11 +379,11 @@ public:
 		}
 	}
 
-	void setInt(int value, int length, bool show)
+	void setInt(int value, int length, bool show, bool ignoreMaxValue = false)
 	{
 		_value = value;
 		GD.ColorRGB(_colorBack);
-		if (value < _minValue or value > _maxValue)
+		if ((value < _minValue or value > _maxValue) and not ignoreMaxValue)
 		{
 			GD.ColorRGB(VGA_RED);
 			if (_raisedError == false and errorString == "")
@@ -607,7 +608,7 @@ public:
 		}
 	}
 
-	void setValue(float value, bool show)
+	void setValue(float value, bool show, bool ignoreMaxValue = false)
 	{
 		// Set value and draw bar and info box
 		// Refresh the info box only all 4 updates
@@ -628,11 +629,11 @@ public:
 		// Set the actual value info box
 		if (value < 100)
 		{
-			ptrActBox->setFloat(value, 1, 4, show);
+			ptrActBox->setFloat(value, 1, 4, show, ignoreMaxValue);
 		}
 		else
 		{
-			ptrActBox->setInt(value, 4, show);
+			ptrActBox->setInt(value, 4, show, ignoreMaxValue);
 		}
 
 		// Update the bar
@@ -731,7 +732,7 @@ InfoBox airBox1("AIR1", "", 470, 340, 32, 125, 2, 3, vgaValueColor, vgaBackgroun
 
 //InfoBox pa2AmperBox("PA 2", "A", 170, 380, 32, 125, 0, 24.9, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
-InfoBox temperaturBox2("Tranzyst2", "`C", 170, 380, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 11);
+InfoBox temperaturBox2("Tranzyst2", "`C", 170, 380, 32, 125, 10, 65, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 11);
 //InfoBox drainVoltageBox("DRAIN", "V", 20, 340, 32, 125, 48, 54, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 5);
 
 
@@ -749,8 +750,8 @@ DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackg
 
 void setup()
 {
-	//analogReference(INTERNAL2V56);
 #ifdef DEBUG
+	Serial.begin(115200);
 	Serial1.begin(115200);
 	Serial1.println("setup");
 #endif
@@ -771,8 +772,10 @@ void setup()
 		// read mode
 		mode = EEPROM.read(32);
 #ifdef DEBUG
-		Serial1.println("reading current_band from memory: ");
+		Serial1.print("reading current_band from memory: ");
 		Serial1.println(current_band);
+		Serial1.print("mode: ");
+		Serial1.println(mode);
 #endif
 	}
 	switch_bands();
@@ -824,21 +827,15 @@ void setup()
 	delay(20);
 
 	GD.begin(1);
+	Serial1.println("GD.begin");
 	GD.cmd_setrotate(0);
-	//LOAD_ASSETS();
 	GD.ClearColorRGB(0x103000);
 	GD.Clear();
 	GD.cmd_text(GD.w / 2, GD.h / 2, 31, OPT_CENTER, "Sterownik PA ver. 1.0.4");
 	GD.swap();
 	delay(500);
-
 	GD.Clear();
 
-	//temperaturBox3.init();
-
-	//temperaturBox3.setFloat(temperaturValue3, 1, 5, false);
-	//airBox1.init();
-	//pa1AmperBox.init();
 	pwrBar.init(true);
 	swrBar.init(true);
 }
@@ -847,10 +844,15 @@ void loop()
 {
 	byte inputsTag;
 	timeAtCycleStart = millis();
-	if ((timeAtCycleStart - timeToogle500ms) > 500)
+	if ((timeAtCycleStart - timeToggle500ms) > 500)
 	{
-		toogle500ms = not toogle500ms;
-		timeToogle500ms = timeAtCycleStart;
+		toggle500ms = not toggle500ms;
+		timeToggle500ms = timeAtCycleStart;
+	}
+	if ((timeAtCycleStart - timeToggle200ms) > 200)
+	{
+		toggle200ms = true;
+		timeToggle200ms = timeAtCycleStart;
 	}
 
 	GD.Clear();
@@ -874,21 +876,16 @@ void loop()
 	}
 	modeBox.setText(modeTxt);
 
-	//drainVoltageBox.init();
-	//aux1VoltageBox.init();
 	pa1AmperBox.init();
 	temperaturBox1.init();
 	temperaturBox2.init();
 	temperaturBox3.init();
-
 	msgBox.init();
-
 	txRxBox.init();
-
 	pwrBar.init();
 	swrBar.init();
 
-	//airBox1.init();
+	//airBox1.init(); ToDo działa? bez init?
 	//airBox1.setText("OFF");
 
 	read_inputs();
@@ -902,7 +899,7 @@ void loop()
 	}
 #endif
 
-	pwrBar.setValue(PWR, true);
+	pwrBar.setValue(PWR, true, true);
 
 	//swrValue = calc_SWR(forwardValue, returnValue);
 	swrBar.setValue(SWR/100.0, true);
@@ -987,8 +984,9 @@ void loop()
 	// analiza dotyku
 	GD.get_inputs();
 	inputsTag = GD.inputs.tag;
-	if (inputsTag > 0 and inputsTag < 255)
+	if (inputsTag > 0 and inputsTag < 255 and toggle200ms)
 	{
+		toggle200ms = false;
 #ifdef DEBUG
 		Serial1.print("inputsTag: ");
 		Serial1.println(inputsTag);
@@ -1012,7 +1010,7 @@ void loop()
 #ifdef DEBUG
 			Serial1.println("Down");
 #endif
-			}
+			}	// Down
 			// pasmo w górę
 			if (Up.isTouchInside(inputsTag))
 			{
@@ -1030,7 +1028,7 @@ void loop()
 #ifdef DEBUG
 			Serial1.println("Up");
 #endif
-			}
+			} // Up
 		}
 		// zmiana trybu zmiany pasma
 		if (modeBox.isTouchInside(inputsTag))
@@ -1045,7 +1043,7 @@ void loop()
 			}
 			byla_zmiana = true;
 			czas_zmiany = millis();
-		}
+		} // mode
 		// przejście w tryb standby i powrót
 		if (txRxBox.isTouchInside(inputsTag))
 		{
@@ -1091,7 +1089,7 @@ void loop()
 					ImaxValue = false;
 				}
 			}
-		}
+		} // msgBox
 		if (pwrBar.isTouchInside(inputsTag))
 		{
 			pwrBar.resetValueMax();
@@ -1100,7 +1098,7 @@ void loop()
 		{
 			swrBar.resetValueMax();
 		}
-	}
+	} // analiza dotyku
 	//-----------------------------------------------------------------------------
 	// Reset genOutputEnable on any errorString
 	if (errorString != "")
@@ -1153,9 +1151,13 @@ void loop()
 	{
 		// na razie przy każdym obiegi pętli; docelowo co np. 200ms
 		current_band = readDataPort();
+#ifdef DEBUG
+		Serial1.print("Auto band: ");
+		Serial1.println(current_band);
+#endif
 		switch_bands();
 	}
-	if ((ImaxValue or TermostatValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or TemperaturaTranzystoraMaxValue or not genOutputEnable)  and toogle500ms)
+	if ((ImaxValue or TermostatValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or TemperaturaTranzystoraMaxValue or not genOutputEnable)  and toggle500ms)
 	{
 		digitalWrite(doPin_errLED, LOW);
 	}
@@ -1204,6 +1206,7 @@ void loop()
 	PORTD ^= (1<<PD2);		// nr portu na sztywno! = D19 -> RxD1; czas na razie 19,9ms
 #else
 	// Keep the cycle time constant
+	/*
 	timeAtCycleEnd = millis();
 	actualCycleTime = timeAtCycleEnd - timeAtCycleStart;
 
@@ -1211,6 +1214,7 @@ void loop()
 	{
 		delay(cycleTime - actualCycleTime);
 	}
+	*/
 #endif
 }
 
@@ -1561,11 +1565,11 @@ int correction(int input)
 }
 void switch_bands()
 {
-#ifdef D_BAND
-	Serial.print("prev_band: ");
-	Serial.println(pasma[prev_band]);
-	Serial.print("current_band: ");
-	Serial.println(pasma[current_band]);
+#ifdef DEBUG
+	Serial1.print("prev_band: ");
+	Serial1.println(Band_PIN[prev_band]);
+	Serial1.print("current_band: ");
+	Serial1.println(Band_PIN[current_band]);
 #endif
 	if (Band_PIN[current_band] != Band_PIN[prev_band])
 	{

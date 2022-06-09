@@ -4,18 +4,18 @@
  *  Created on: 18 lut 2021
  *      Author: witek
  */
-#include "Arduino.h"
+//#include "Arduino.h"
 #ifndef STEROWNIK_FT81X_H_
 #define STEROWNIK_FT81X_H_
 
-#define DEBUG		// na RxD1 (złącze J7 RS232 PIN 3)
+//#define DEBUG		// na RxD1 (złącze J7 RS232 PIN 3)
 //#define CZAS_PETLI		// wyklucza użycie gniazda RS232
 //#define ACS712
 #define ACS713
 
 /*
  * wejścia/wyjścia cyfrowe:
- * D0, D1 zarezerowowane dla serial debug?? a może inny serial? -> inny niż jest przez USB
+ * D0, D1, D2, D3 wolne...
  *
  */
 
@@ -57,7 +57,7 @@
 #define TEMP3_PIN			A14		// wejście dla temperatury radiatora z LM35
 #define IDD_PIN				A15		// pomiar prądu PA	J26->2
 
-#define thresholdTemperaturAirOn1   45
+#define thresholdTemperaturAirOn1   50
 #define thresholdTemperaturTransistorMax	70		// temperatura tranzystora (z termistora nr 1), przy której PA jest blokowane - STBY
 #ifdef ACS713
 #define pa1AmperFactor (inputFactorVoltage * (30/4.0))    // 133mV/A -> 7.5A/V; ACS713 30A, Vout od 0.5V do 4.5V
