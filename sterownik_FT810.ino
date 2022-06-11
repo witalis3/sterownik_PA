@@ -608,7 +608,7 @@ public:
 		}
 	}
 
-	void setValue(float value, bool show, bool ignoreMaxValue = false)
+	void setValue(float value, bool show, bool ignoreMaxValue)
 	{
 		// Set value and draw bar and info box
 		// Refresh the info box only all 4 updates
@@ -641,7 +641,7 @@ public:
 		//if (_showMax) ??
 		if (show)
 		{
-			setValueMax(_value);
+			setValueMax(_value, ignoreMaxValue);
 		}
 		// ToDo ??
 		if (show)
@@ -667,7 +667,7 @@ public:
 		_valueOld = value;
 	}
 
-	void setValueMax(float value)
+	void setValueMax(float value, bool ignoreMaxValue)
 	{
 		// Set the maximum value
 		if (value > _valueMax)
@@ -677,11 +677,11 @@ public:
 		// Set the maximum value info box
 		if (value < 100)
 		{
-			ptrMaxBox->setFloat(_valueMax, 1, 4, true);
+			ptrMaxBox->setFloat(_valueMax, 1, 4, true, ignoreMaxValue);
 		}
 		else
 		{
-			ptrMaxBox->setInt(_valueMax, 4, true);
+			ptrMaxBox->setInt(_valueMax, 4, true, ignoreMaxValue);
 		}
 	}
 
@@ -902,7 +902,7 @@ void loop()
 	pwrBar.setValue(PWR, true, true);
 
 	//swrValue = calc_SWR(forwardValue, returnValue);
-	swrBar.setValue(SWR/100.0, true);
+	swrBar.setValue(SWR/100.0, true, false);
 
 	temperaturBox1.setInt(temperaturValueI1, 3, true);
 	temperaturBox2.setInt(temperaturValueI2, 3, true);

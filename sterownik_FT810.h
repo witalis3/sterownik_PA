@@ -8,7 +8,7 @@
 #ifndef STEROWNIK_FT81X_H_
 #define STEROWNIK_FT81X_H_
 
-//#define DEBUG		// na RxD1 (złącze J7 RS232 PIN 3)
+#define DEBUG		// na RxD1 (złącze J7 RS232 PIN 3)
 //#define CZAS_PETLI		// wyklucza użycie gniazda RS232
 //#define ACS712
 #define ACS713
@@ -53,8 +53,8 @@
 #define FWD_PIN				A6		// forward na antenie 	J2->3
 #define REF_PIN				A7		// odbita na antenie 	J2->2
 #define TEMP1_PIN			A12		// tranzystor 1 -> termistor 1,8k
-#define TEMP2_PIN			A13		// tranzystor 2 -> chwilowo brak
-#define TEMP3_PIN			A14		// wejście dla temperatury radiatora z LM35
+#define TEMP2_PIN			A13		// tranzystor 2 -> termistor 1,8k
+#define TEMP3_PIN			A14		// temperatura radiatora -> termistor 1,8k
 #define IDD_PIN				A15		// pomiar prądu PA	J26->2
 
 #define thresholdTemperaturAirOn1   50
