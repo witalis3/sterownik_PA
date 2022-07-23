@@ -34,6 +34,8 @@
  * 	- przełączanie pasm na podstawie kodu DCBA z portu Band Data
  * 	- pomiar temperatury na termistorach
  * 	- obsługa wartości szczytowych mocy i SWR
+ * 	- poprawiony dotyk
+ * 	- parę drobiazgów (sp2fp)
  * ver 1.0.3
  * 	- przełączanie pasm
  *	- pamięć mode i pasma: EEPROM
