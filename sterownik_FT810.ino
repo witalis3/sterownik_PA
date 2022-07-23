@@ -6,12 +6,22 @@
 #include <math.h>
 //#include "FranklinGothic_assets.h"
 /* schemat sterownika: PA_500W->PA_500W_3->sterownik->sterownik_FT810
- * #define STORAGE             0   // Want SD storage? w GD3.cpp -> trochę mniejszy rozmiar wsadu
+ * #define STORAGE             1 -> musi być!! (dla 0 brak obrazu ;-))
  *
  * ToDo
+ * - nie kasuje PEP dla mocy (dotyk)
+ * - SP2FP
+ * 		- zrobione! brak opóźnienia w obsłudze dotyku
+ * 		- zrobione! przełączanie pasm: strzałki góra/dół -> +/-
+ * 		- zrobione! automatyczne zerowanie PEP po kilku sekundach (parametr i jako włączana opcja(define)) oraz po puszczeniu PTT
+ * 			- kasowanie po puszczeniu PTT ;-)
+ * 		- zrobione! kolor skali na początku zielony zamiast szarego
+ *
+ * 		- różne skale mocy (parametryzacja)
+ * 		- odczyt mocy sterującej przy Bypass (Stby) (ew. wybór skali w parametrach)
+ *
+ * - zaległe(?) -> do ponownego sprawdzenia
  * 	- blokada przełączania pasm podczas nadawania
- * 	- czekanie na puszczenie dotyku ??
- * 	- jakaś klasa dla LPF (band)
  * 	- obsługa WY_ALARMU_PIN
  * 		- obsługa wyjścia WY_ALARMU_PIN -> powoduje odcięcie zasilania (np. przy alarmie)
  * 			- kiedy, przy którym alarmie wykonać i czy w ogóle?
@@ -40,6 +50,9 @@
  *
  *
  */
+
+#define PEP_TIME	10
+unsigned long pep_time = 0;
 
 
 // Define some colors
@@ -107,10 +120,6 @@ unsigned long czas_zmiany;
 boolean airBox1Manual = false;
 unsigned long timeAtCycleStart, timeAtCycleEnd,  actualCycleTime, timeToggle500ms = 0, timeToggle200ms = 0;
 bool toggle500ms, toggle200ms;
-
-//# define cycleTime        20		// kompromis pomiędzy szybką odpowiedzią linijki a skakaniem odczytów ToDo rozdzielić?
-// ToDo nowy czas do czytania dotyku
-
 
 /*
  * fonty:
@@ -202,6 +211,7 @@ union swaper
 	} bit;
 };
 
+bool bylo_ptt = false;
 
 /*
  * button czuły na dotyk bez tekstu i grafiki
@@ -568,7 +578,11 @@ public:
 	{
 		// Draw the scale with value and warning levels
 		// Horizontal base line
+#ifdef SP2FP
+		fillRect(xPos, yPos + height - 2, xPos + width, yPos + height, VGA_GREEN);
+#else
 		fillRect(xPos, yPos + height - 2, xPos + width, yPos + height, vgaValueColor);
+#endif
 		// Draw warning level
 		int warningLevel1 = (_warnValue1 - _minValue) / _rangeValue * _widthBar;
 		int warningLevel2 = (_warnValue2 - _minValue) / _rangeValue * _widthBar;
@@ -781,7 +795,7 @@ void setup()
 	switch_bands();
 
 	pinMode(18, OUTPUT);
-	digitalWrite(18, LOW);
+	digitalWrite(18, LOW);	// co to jest?
 
 	pinMode(WY_ALARMU_PIN, OUTPUT);
 	digitalWrite(WY_ALARMU_PIN, LOW);
@@ -849,7 +863,7 @@ void loop()
 		toggle500ms = not toggle500ms;
 		timeToggle500ms = timeAtCycleStart;
 	}
-	if ((timeAtCycleStart - timeToggle200ms) > 200)
+	if ((timeAtCycleStart - timeToggle200ms) > 500)
 	{
 		toggle200ms = true;
 		timeToggle200ms = timeAtCycleStart;
@@ -865,6 +879,11 @@ void loop()
 			20 + 1 + 1, 18, 0, tyt);
 	GD.ColorRGB(vgaValueColor);
 	GD.cmd_text(185, 56, GroteskBold32x64, OPT_CENTER, BAND[current_band]);
+
+#ifdef SP2FP
+	GD.cmd_text(285, 56, GroteskBold32x64, OPT_CENTER, "+");
+	GD.cmd_text(85, 56, GroteskBold32x64, OPT_CENTER, "-");
+#endif
 
 	if (mode == MANUAL)
 	{
@@ -982,123 +1001,127 @@ void loop()
 		errorString = "Error: Protector Imax detected";
 	}
 	// analiza dotyku
-	GD.get_inputs();
-	inputsTag = GD.inputs.tag;
-	if (inputsTag > 0 and inputsTag < 255 and toggle200ms)
+	if (toggle200ms)
 	{
 		toggle200ms = false;
-#ifdef DEBUG
-		Serial1.print("inputsTag: ");
-		Serial1.println(inputsTag);
-#endif
-		if (mode == MANUAL)
+		timeToggle200ms = millis();
+		GD.get_inputs();
+		inputsTag = GD.inputs.tag;
+		if (inputsTag > 0 and inputsTag < 255)
 		{
-			// pasmo w dół
-			if (Down.isTouchInside(inputsTag))
-			{
-				if (current_band == BAND_160)
-				{
-					current_band = BAND_NUM - 1;
-				}
-				else
-				{
-					current_band--;
-				}
-				byla_zmiana = true;
-				czas_zmiany = millis();
-				switch_bands();
 #ifdef DEBUG
-			Serial1.println("Down");
+			Serial1.print("inputsTag: ");
+			Serial1.println(inputsTag);
 #endif
-			}	// Down
-			// pasmo w górę
-			if (Up.isTouchInside(inputsTag))
-			{
-				if (current_band == BAND_6)
-				{
-					current_band = BAND_160;
-				}
-				else
-				{
-					current_band++;
-				}
-				byla_zmiana = true;
-				czas_zmiany = millis();
-				switch_bands();
-#ifdef DEBUG
-			Serial1.println("Up");
-#endif
-			} // Up
-		}
-		// zmiana trybu zmiany pasma
-		if (modeBox.isTouchInside(inputsTag))
-		{
 			if (mode == MANUAL)
 			{
-				mode = AUTO;
-			}
-			else
-			{
-				mode = MANUAL;
-			}
-			byla_zmiana = true;
-			czas_zmiany = millis();
-		} // mode
-		// przejście w tryb standby i powrót
-		if (txRxBox.isTouchInside(inputsTag))
-		{
-			if (stbyValue)
-			{
-				stbyValue = false;
-			}
-			else
-			{
-				stbyValue = true;
-			}
-		}
-		if (airBox1.isTouchInside(inputsTag))
-		{
-			if (airBox1Manual)
-			{
-				airBox1.setText("OFF");
-				airBox1Manual = false;
-			}
-			else
-			{
-				airBox1.setText("ON");
-				airBox1Manual = true;
-			}
-		}
-		if (msgBox.isTouchInside(inputsTag))
-		{
-			if (msgBox.getText() == "")
-			{
-				infoString = "no more messages";
-			}
-			else
-			{
-				msgBox.setText("");
-				errorString = "";
-				infoString = "";
-				// reset alarmu od IDD
-				if (ImaxValue)
+				// pasmo w dół
+				if (Down.isTouchInside(inputsTag))
 				{
-					digitalWrite(RESET_ALARMU_PIN, LOW);
-					delay(10);
-					digitalWrite(RESET_ALARMU_PIN, HIGH);
-					ImaxValue = false;
+					if (current_band == BAND_160)
+					{
+						current_band = BAND_NUM - 1;
+					}
+					else
+					{
+						current_band--;
+					}
+					byla_zmiana = true;
+					czas_zmiany = millis();
+					switch_bands();
+#ifdef DEBUG
+					Serial1.println("Down");
+#endif
+				}	// Down
+				// pasmo w górę
+				if (Up.isTouchInside(inputsTag))
+				{
+					if (current_band == BAND_6)
+					{
+						current_band = BAND_160;
+					}
+					else
+					{
+						current_band++;
+					}
+					byla_zmiana = true;
+					czas_zmiany = millis();
+					switch_bands();
+#ifdef DEBUG
+					Serial1.println("Up");
+#endif
+				} // Up
+			}
+			// zmiana trybu zmiany pasma
+			if (modeBox.isTouchInside(inputsTag))
+			{
+				if (mode == MANUAL)
+				{
+					mode = AUTO;
+				}
+				else
+				{
+					mode = MANUAL;
+				}
+				byla_zmiana = true;
+				czas_zmiany = millis();
+			} // mode
+			  // przejście w tryb standby i powrót
+			if (txRxBox.isTouchInside(inputsTag))
+			{
+				if (stbyValue)
+				{
+					stbyValue = false;
+				}
+				else
+				{
+					stbyValue = true;
 				}
 			}
-		} // msgBox
-		if (pwrBar.isTouchInside(inputsTag))
-		{
-			pwrBar.resetValueMax();
+			if (airBox1.isTouchInside(inputsTag))
+			{
+				if (airBox1Manual)
+				{
+					airBox1.setText("OFF");
+					airBox1Manual = false;
+				}
+				else
+				{
+					airBox1.setText("ON");
+					airBox1Manual = true;
+				}
+			}
+			if (msgBox.isTouchInside(inputsTag))
+			{
+				if (msgBox.getText() == "")
+				{
+					infoString = "no more messages";
+				}
+				else
+				{
+					msgBox.setText("");
+					errorString = "";
+					infoString = "";
+					// reset alarmu od IDD
+					if (ImaxValue)
+					{
+						digitalWrite(RESET_ALARMU_PIN, LOW);
+						delay(10);
+						digitalWrite(RESET_ALARMU_PIN, HIGH);
+						ImaxValue = false;
+					}
+				}
+			} // msgBox
+			if (pwrBar.isTouchInside(inputsTag))
+			{
+				pwrBar.resetValueMax();
+			}
+			if (swrBar.isTouchInside(inputsTag))
+			{
+				swrBar.resetValueMax();
+			}
 		}
-		if (swrBar.isTouchInside(inputsTag))
-		{
-			swrBar.resetValueMax();
-		}
-	} // analiza dotyku
+	} // koniec obsługi dotyku
 	//-----------------------------------------------------------------------------
 	// Reset genOutputEnable on any errorString
 	if (errorString != "")
@@ -1135,12 +1158,23 @@ void loop()
 			txRxBox.setColorValue(vgaBackgroundColor);
 			txRxBox.setColorBack(VGA_RED);
 			txRxBox.setText(" TX");
+#ifdef SP2FP
+			bylo_ptt = true;
+#endif
 		}
 		else
 		{
 			txRxBox.setColorValue(vgaBackgroundColor);
 			txRxBox.setColorBack(VGA_GREEN);
 			txRxBox.setText("OPR");
+#ifdef SP2FP
+			if (bylo_ptt)
+			{
+				pwrBar.resetValueMax();
+				swrBar.resetValueMax();
+				pep_time = millis();
+			}
+#endif
 		}
 		digitalWrite(BLOKADA_PTT_PIN, LOW);
 	}
@@ -1183,7 +1217,12 @@ void loop()
 		msgBox.setColorValue(vgaValueColor);
 		msgBox.setText(infoString.c_str());
 	}
-
+	if (millis() - pep_time > PEP_TIME*1000)
+	{
+		pwrBar.resetValueMax();
+		swrBar.resetValueMax();
+		pep_time = millis();
+	}
 
 	GD.swap();
 
