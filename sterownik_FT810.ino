@@ -4,22 +4,30 @@
 #include <SPI.h>
 #include <GD3.h>
 #include <math.h>
-//#include "FranklinGothic_assets.h"
+#ifdef SP2FP
+#include "Adafruit_ADS1X15.h"	// 2.4.0
+Adafruit_ADS1115 ads;
+// The ADC input range (or gain) can be changed via the following
+// functions, but be careful never to exceed VDD +0.3V max, or to
+// exceed the upper and lower limits if you adjust the input range!
+// Setting these values incorrectly may destroy your ADC!
+//                                                                ADS1015  ADS1115
+//                                                                -------  -------
+// ads.setGain(GAIN_TWOTHIRDS);  // 2/3x gain +/- 6.144V  1 bit = 3mV      0.1875mV (default)
+// ads.setGain(GAIN_ONE);        // 1x gain   +/- 4.096V  1 bit = 2mV      0.125mV
+// ads.setGain(GAIN_TWO);        // 2x gain   +/- 2.048V  1 bit = 1mV      0.0625mV
+// ads.setGain(GAIN_FOUR);       // 4x gain   +/- 1.024V  1 bit = 0.5mV    0.03125mV
+// ads.setGain(GAIN_EIGHT);      // 8x gain   +/- 0.512V  1 bit = 0.25mV   0.015625mV
+// ads.setGain(GAIN_SIXTEEN);    // 16x gain  +/- 0.256V  1 bit = 0.125mV  0.0078125mV
+
+#include "Adafruit_MCP23X17.h"	// 2.1.0
+Adafruit_MCP23X17 mcp;
+#endif
+
 /* schemat sterownika: PA_500W->PA_500W_3->sterownik->sterownik_FT810
  * #define STORAGE             1 -> musi być!! (dla 0 brak obrazu ;-))
  *
  * ToDo
- * - nie kasuje PEP dla mocy (dotyk)
- * - SP2FP
- * 		- zrobione! brak opóźnienia w obsłudze dotyku
- * 		- zrobione! przełączanie pasm: strzałki góra/dół -> +/-
- * 		- zrobione! automatyczne zerowanie PEP po kilku sekundach (parametr i jako włączana opcja(define)) oraz po puszczeniu PTT
- * 			- kasowanie po puszczeniu PTT ;-)
- * 		- zrobione! kolor skali na początku zielony zamiast szarego
- *
- * 		- różne skale mocy (parametryzacja)
- * 		- odczyt mocy sterującej przy Bypass (Stby) (ew. wybór skali w parametrach)
- *
  * - zaległe(?) -> do ponownego sprawdzenia
  * 	- blokada przełączania pasm podczas nadawania
  * 	- obsługa WY_ALARMU_PIN
@@ -29,6 +37,9 @@
  * 		- komunikat error
  * 			- za krótki (za mała czcionka?)
  * 			- nie wyśrodkowany w pionie
+ * ver 1.0.5
+ *  - nowa tabela korekcji dla BAT41
+ *  - pomiary SWR i mocy przed LPF oraz na wejściu (opcja) chyba niedokończone
  * ver 1.0.4
  * 	- możliwość ręcznego uruchomienia wentylatora
  * 	- przełączanie pasm na podstawie kodu DCBA z portu Band Data
@@ -108,6 +119,25 @@ enum
 	LPF6_PIN,
 	LPF7_PIN
 };
+#ifdef SP2FP
+enum
+{
+	BPF160_PIN = 20,
+	BPF80_PIN = 21,
+	BPF60_PIN = 22,
+	BPF40_PIN = 23,
+	BPF30_PIN = 24,
+	BPF20_PIN = 25,
+	BPF17_PIN = 26,
+	BPF15_PIN = 27,
+	BPF12_PIN = 3,
+	BPF10_PIN = 4,
+	BPF6_PIN = 5
+};
+byte BPF_PIN[BAND_NUM] = {BPF160_PIN, BPF80_PIN, BPF60_PIN, BPF40_PIN, BPF30_PIN, BPF20_PIN, BPF17_PIN, BPF15_PIN, BPF12_PIN, BPF10_PIN, BPF6_PIN};
+
+#endif
+
 const char * BAND[BAND_NUM] = {"160m", "80m", "60m", "40m", "30m", "20m","17m", "15m","12m", "10m", "6m"};
 
 byte current_band = BAND_80;
@@ -742,15 +772,19 @@ InfoBox modeBox("MODE", "", 395, 60, 32, 200, 4, 5, vgaValueColor, vgaBackground
 //InfoBox airBox2("AIR2", "", 470, 380, 32, 125, 0, 0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 8);
 
 InfoBox pa1AmperBox("IDD", "A", 20, 340, 32, 125, 0, 20.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 9);
-InfoBox temperaturBox1("Tranzyst1", "`C", 170, 340, 32, 125, 10, 65, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 10);
+InfoBox temperaturBox1("Tranzyst1", "`C", 170, 340, 32, 125, 10, thresholdTemperaturTransistorMax, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 10);
+InfoBox temperaturBox2("Tranzyst2", "`C", 170, 380, 32, 125, 10, thresholdTemperaturTransistorMax, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 11);
 InfoBox temperaturBox3("Radiator", "`C", 320, 340, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 12);
 InfoBox airBox1("AIR1", "", 470, 340, 32, 125, 2, 3, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 7);
 
 //InfoBox pa2AmperBox("PA 2", "A", 170, 380, 32, 125, 0, 24.9, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
-InfoBox temperaturBox2("Tranzyst2", "`C", 170, 380, 32, 125, 10, 65, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 11);
 //InfoBox drainVoltageBox("DRAIN", "V", 20, 340, 32, 125, 48, 54, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 5);
 
+#ifdef SP2FP
+InfoBox swrWejBox("SWR", "wej", 20, 380, 32, 125, 1, 3, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 24);
+InfoBox swrLPFBox("SWR", "LPF", 320, 380, 32, 125, 1, 3, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 25);
+#endif
 
 InfoBox emptyBox("", "", 470, 380, 32, 125, 6.0, 7.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 13);
 
@@ -767,8 +801,8 @@ DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackg
 void setup()
 {
 #ifdef DEBUG
-	Serial.begin(115200);
-	Serial1.begin(115200);
+	Serial.begin(115200);	// RS232 na wirtualnym złączu (USB)
+	Serial1.begin(115200);	// RS232 na złączu J7
 	Serial1.println("setup");
 #endif
 	// pierwsze 24 komórki EEPROM są używane i zajęte przez wyświetlacz (dane kalibracji)
@@ -834,6 +868,26 @@ void setup()
 	pinMode(BAND2_PIN, INPUT);
 	pinMode(BAND3_PIN, INPUT);
 
+#ifdef SP2FP
+	if (not ads.begin())
+	{
+		errorString = "brak połączenia z ADS1115";
+	}
+	if (mcp.begin_I2C())
+	{
+		mcp.pinMode(WE_ALARMU1_PIN, INPUT_PULLUP);
+		mcp.pinMode(WE_ALARMU2_PIN, INPUT_PULLUP);
+		mcp.pinMode(WE_ALARMU3_PIN, INPUT_PULLUP);
+		mcp.pinMode(STBY_stan_PIN, OUTPUT);
+	}
+	else
+	{
+		errorString = "brak połączenia z MCP23017";
+	}
+#endif
+
+
+
 	pinMode(PDPin, OUTPUT);
 	digitalWrite(PDPin, HIGH);
 	delay(20);
@@ -847,7 +901,7 @@ void setup()
 	GD.cmd_setrotate(0);
 	GD.ClearColorRGB(0x103000);
 	GD.Clear();
-	GD.cmd_text(GD.w / 2, GD.h / 2, 31, OPT_CENTER, "Sterownik PA ver. 1.0.4");
+	GD.cmd_text(GD.w / 2, GD.h / 2, 31, OPT_CENTER, "Sterownik PA ver. 1.0.5");
 	GD.swap();
 	delay(500);
 	GD.Clear();
@@ -905,6 +959,10 @@ void loop()
 	txRxBox.init();
 	pwrBar.init();
 	swrBar.init();
+#ifdef SP2FP
+	swrLPFBox.init();
+	swrWejBox.init();
+#endif
 
 	//airBox1.init(); ToDo działa? bez init?
 	//airBox1.setText("OFF");
@@ -1017,8 +1075,8 @@ void loop()
 #endif
 			if (mode == MANUAL)
 			{
-				// pasmo w dół
-				if (Down.isTouchInside(inputsTag))
+				// plusik
+				if (Up.isTouchInside(inputsTag))
 				{
 					if (current_band == BAND_160)
 					{
@@ -1034,9 +1092,9 @@ void loop()
 #ifdef DEBUG
 					Serial1.println("Down");
 #endif
-				}	// Down
-				// pasmo w górę
-				if (Up.isTouchInside(inputsTag))
+				}	// Up
+				// minusik
+					if (Down.isTouchInside(inputsTag))
 				{
 					if (current_band == BAND_6)
 					{
@@ -1052,7 +1110,7 @@ void loop()
 #ifdef DEBUG
 					Serial1.println("Up");
 #endif
-				} // Up
+				} // Dpwn
 			}
 			// zmiana trybu zmiany pasma
 			if (modeBox.isTouchInside(inputsTag))
@@ -1142,7 +1200,10 @@ void loop()
 		txRxBox.setColorBack(VGA_YELLOW);
 		txRxBox.setText("STBY");
 		digitalWrite(BLOKADA_PTT_PIN, HIGH);
-		/* co to jest? o co tu chodzi?
+#ifdef SP2FP
+		mcp.digitalWrite(STBY_stan_PIN, HIGH);	// dubel
+#endif
+		/* co to jest? o co tu chodzi?:
 		if (not stbyValue)
 		{
 			digitalWrite(BLOKADA_PTT_PIN, HIGH);
@@ -1179,6 +1240,9 @@ void loop()
 #endif
 		}
 		digitalWrite(BLOKADA_PTT_PIN, LOW);
+#ifdef SP2FP
+		mcp.digitalWrite(STBY_stan_PIN, LOW);	// dubel
+#endif
 	}
 
 	//-----------------------------------------------------------------------------
@@ -1571,8 +1635,69 @@ void get_pwr()
 #endif
     return;
 }
+/*
+ * korekcja na spadek napięcia na diodzie BAT41
+ */
 int correction(int input)
 {
+#ifdef KOREKCJA_BAT41_10k
+	if (input <= 80)
+	{
+		return 0;
+	}
+	if (input <= 171)
+	{
+		input += 205;	// 244
+	}
+	else if (input <= 328)
+	{
+		input += 215;	// 254
+	}
+	else if (input <= 582)
+	{
+		input += 226;	// 280
+	}
+	else if (input <= 820)
+	{
+		input += 241;	// 297
+	}
+	else if (input <= 1100)
+	{
+		input += 250;	// 310
+	}
+	else if (input <= 2181)
+	{
+		input += 260;	// 430
+	}
+	else if (input <= 3322)
+	{
+		input += 270;	// 484
+	}
+	else if (input <= 4623)
+	{
+		input += 280;	// 530
+	}
+	else if (input <= 5862)
+	{
+		input += 290;	// 648
+	}
+	else if (input <= 7146)
+	{
+		input += 300;	// 743
+	}
+	else if (input <= 8502)
+	{
+		input += 310;	// 8000
+	}
+	else if (input <= 10500)
+	{
+		input += 320;	// 840
+	}
+	else
+	{
+		input += 330;	// 860
+	}
+#else
     if (input <= 80)
         return 0;
     if (input <= 171)
@@ -1601,7 +1726,7 @@ int correction(int input)
         input += 840;
     else
         input += 860;
-    //
+#endif
     return input;
 }
 void switch_bands()
@@ -1614,6 +1739,12 @@ void switch_bands()
 #endif
 	if (Band_PIN[current_band] != Band_PIN[prev_band])
 	{
+#ifdef SP2FP
+		digitalWrite(Band_PIN[prev_band], LOW);
+		mcp.digitalWrite(BPF_PIN[prev_band], LOW);
+		digitalWrite(Band_PIN[current_band], HIGH);
+		mcp.digitalWrite(BPF_PIN[current_band], HIGH);
+#else
 		if (prev_band != BAND_160)
 		{
 			digitalWrite(Band_PIN[prev_band], LOW);
@@ -1622,6 +1753,7 @@ void switch_bands()
 		{
 			digitalWrite(Band_PIN[current_band], HIGH);
 		}
+#endif
 	}
 	prev_band = current_band;
 }

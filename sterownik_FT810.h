@@ -8,17 +8,25 @@
 #ifndef STEROWNIK_FT81X_H_
 #define STEROWNIK_FT81X_H_
 
-#define SP2FP
-#define DEBUG		// na RxD1 (złącze J7 RS232 PIN 3)
+//#define SP2FP
+//#define DEBUG		// na RxD1 (złącze J7 RS232 PIN 3)
 //#define CZAS_PETLI		// wyklucza użycie gniazda RS232
 //#define ACS712
 #define ACS713
+#define KOREKCJA_BAT41_10k
 
 /*
  * wejścia/wyjścia cyfrowe:
  * D0, D1, D2, D3 wolne...
  *
  */
+#ifdef SP2FP
+#define WE_ALARMU1_PIN	6
+#define WE_ALARMU2_PIN	7
+#define WE_ALARMU3_PIN	8
+
+#define STBY_stan_PIN 9		// w MCP23017: tu informacja o stanie STBY; aktywny stan wysoki: przy STBY HIGH
+#endif
 
 #define PDPin 				54	// A0 FT810
 #define CS					55	// A1 FT810
@@ -51,6 +59,13 @@
 /*
  * wejścia analogowe:
  */
+#ifdef SP2FP
+#define FWD_LPF_PIN			A3		// forward przed LPF
+#define REF_LPF_PIN			A4		// odbita przed LPF
+#define FWD_we_PIN			A8		// forward na wejściu
+#define REF_we_PIN			A9		// odbita na wejściu
+#endif
+
 #define FWD_PIN				A6		// forward na antenie 	J2->3
 #define REF_PIN				A7		// odbita na antenie 	J2->2
 #define TEMP1_PIN			A12		// tranzystor 1 -> termistor 1,8k
@@ -58,7 +73,7 @@
 #define TEMP3_PIN			A14		// temperatura radiatora -> termistor 1,8k
 #define IDD_PIN				A15		// pomiar prądu PA	J26->2
 
-#define thresholdTemperaturAirOn1   50
+#define thresholdTemperaturAirOn1   50				// temperatura wlączenia wentylatora
 #define thresholdTemperaturTransistorMax	70		// temperatura tranzystora (z termistora nr 1), przy której PA jest blokowane - STBY
 #ifdef ACS713
 #define pa1AmperFactor (inputFactorVoltage * (30/4.0))    // 133mV/A -> 7.5A/V; ACS713 30A, Vout od 0.5V do 4.5V
