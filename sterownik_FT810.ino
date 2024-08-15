@@ -24,7 +24,9 @@ Adafruit_ADS1115 ads;
 Adafruit_MCP23X17 mcp;
 #endif
 
-/* schemat sterownika: PA_500W->PA_500W_3->sterownik->sterownik_FT810
+/*
+ * schemat sterownika: "C:\KICAD\projekty\PA_500W\PA_500W_3\sterownik_FT810_SP3JDZ\sterownik_FT810_SP3JDZ.kicad_pro"
+ * projekt LPF:
  * #define STORAGE             1 -> musi być!! (dla 0 brak obrazu ;-))
  *
  * ToDo
@@ -774,7 +776,7 @@ InfoBox modeBox("MODE", "", 395, 60, 32, 200, 4, 5, vgaValueColor, vgaBackground
 InfoBox pa1AmperBox("IDD", "A", 20, 340, 32, 125, 0, 20.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 9);
 InfoBox temperaturBox1("Tranzyst1", "`C", 170, 340, 32, 125, 10, thresholdTemperaturTransistorMax, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 10);
 InfoBox temperaturBox2("Tranzyst2", "`C", 170, 380, 32, 125, 10, thresholdTemperaturTransistorMax, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 11);
-InfoBox temperaturBox3("Radiator", "`C", 320, 340, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 12);
+InfoBox temperaturBox3("Radiator", "`C", 320, 340, 32, 125, 10, thresholdTemperaturRadiatorMax, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 12);
 InfoBox airBox1("AIR1", "", 470, 340, 32, 125, 2, 3, vgaValueColor, vgaBackgroundColor, GroteskBold16x32, 7);
 
 //InfoBox pa2AmperBox("PA 2", "A", 170, 380, 32, 125, 0, 24.9, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
@@ -981,7 +983,8 @@ void loop()
 	pwrBar.setValue(PWR, true, true);
 
 	//swrValue = calc_SWR(forwardValue, returnValue);
-	swrBar.setValue(SWR/100.0, true, false);
+//	swrBar.setValue(SWR/100.0, true, false);
+	swrBar.setValue(SWR/100.0, true, true);
 
 	temperaturBox1.setInt(temperaturValueI1, 3, true);
 	temperaturBox2.setInt(temperaturValueI2, 3, true);
@@ -1075,7 +1078,7 @@ void loop()
 #endif
 			if (mode == MANUAL)
 			{
-				// plusik
+				// UP
 				if (Up.isTouchInside(inputsTag))
 				{
 					if (current_band == BAND_160)
@@ -1093,7 +1096,7 @@ void loop()
 					Serial1.println("Down");
 #endif
 				}	// Up
-				// minusik
+				// Down
 					if (Down.isTouchInside(inputsTag))
 				{
 					if (current_band == BAND_6)
@@ -1110,7 +1113,7 @@ void loop()
 #ifdef DEBUG
 					Serial1.println("Up");
 #endif
-				} // Dpwn
+				} // Down
 			}
 			// zmiana trybu zmiany pasma
 			if (modeBox.isTouchInside(inputsTag))

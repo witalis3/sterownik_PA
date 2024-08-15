@@ -44,17 +44,17 @@
 		<link>
 			<name>libraries/Adafruit_ADS1X15</name>
 			<type>2</type>
-			<location>C:/Users/48515/Documents/Arduino/libraries/Adafruit_ADS1X15</location>
+			<location>C:/Users/witol/Documents/Arduino/libraries/Adafruit_ADS1X15</location>
 		</link>
 		<link>
 			<name>libraries/Adafruit_BusIO</name>
 			<type>2</type>
-			<location>C:/Users/48515/Documents/Arduino/libraries/Adafruit_BusIO</location>
+			<location>C:/Users/witol/Documents/Arduino/libraries/Adafruit_BusIO</location>
 		</link>
 		<link>
 			<name>libraries/Adafruit_MCP23017_Arduino_Library</name>
 			<type>2</type>
-			<location>C:/Users/48515/Documents/Arduino/libraries/Adafruit_MCP23017_Arduino_Library</location>
+			<location>C:/Users/witol/Documents/Arduino/libraries/Adafruit_MCP23017_Arduino_Library</location>
 		</link>
 		<link>
 			<name>libraries/EEPROM</name>
@@ -64,7 +64,7 @@
 		<link>
 			<name>libraries/GD3</name>
 			<type>2</type>
-			<location>C:/Users/48515/Documents/Arduino/libraries/GD3</location>
+			<location>C:/Users/witol/Documents/Arduino/libraries/GD3</location>
 		</link>
 		<link>
 			<name>libraries/SPI</name>
