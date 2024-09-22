@@ -25,8 +25,10 @@ Adafruit_MCP23X17 mcp;
 #endif
 
 /*
- * schemat sterownika: "C:\KICAD\projekty\PA_500W\PA_500W_3\sterownik_FT810_SP3JDZ\sterownik_FT810_SP3JDZ.kicad_pro"
- * projekt LPF:
+ * schemat sterownika:
+ * 		stary	-> "C:\KICAD\projekty\PA_500W\PA_500W_3\sterownik_FT810_SP3JDZ\sterownik_FT810_SP3JDZ.kicad_pro"
+ *		nowy 	-> " C:\KICAD\projekty\PA_500W\PA_500W_#2\sterownik_FT810_PA_#2\sterownik_FT810_PA_#2.kicad_sch"
+ *
  * #define STORAGE             1 -> musi być!! (dla 0 brak obrazu ;-))
  *
  * ToDo
