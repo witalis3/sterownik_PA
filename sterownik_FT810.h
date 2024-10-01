@@ -76,6 +76,7 @@
 #define thresholdTemperaturAirOn1   50				// temperatura wlączenia wentylatora
 #define thresholdTemperaturTransistorMax	90		// temperatura tranzystora (z termistora nr 1), przy której PA jest blokowane - STBY
 #define thresholdTemperaturRadiatorMax		70		// temperatura radiatora, przy której PA jest blokowane - STBY
+#define thersholdIDDMax 									18.0		// maksymalny prąd tranzystorów mocy [A]
 #ifdef ACS713
 #define pa1AmperFactor (inputFactorVoltage * (30/4.0))    // 133mV/A -> 7.5A/V; ACS713 30A, Vout od 0.5V do 4.5V
 #define pa1AmperOffset (1023/5 * 0.512)                     // 0.5V z czujnika Hallla dla Idd = 0A -> zmierzyć i wstawić

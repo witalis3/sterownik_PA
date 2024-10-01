@@ -37,6 +37,7 @@ Adafruit_MCP23X17 mcp;
  * 	- obsługa WY_ALARMU_PIN
  * 		- obsługa wyjścia WY_ALARMU_PIN -> powoduje odcięcie zasilania (np. przy alarmie)
  * 			- kiedy, przy którym alarmie wykonać i czy w ogóle?
+ * 			- brak realizacji -> raczej nieotrzebne
  * 	- komunikat o przekroczeniu temp radiatora nie znika po dotknięciu
  * 		- komunikat error
  * 			- za krótki (za mała czcionka?)
@@ -1061,7 +1062,7 @@ void loop()
 	}
 	*/
 	// Monitor additional inputs and set errorString
-	if (ImaxValue == true)
+	if (ImaxValue == true or pa1AmperValue > thersholdIDDMax)
 	{
 		errorString = "Error: Protector Imax detected";
 	}
@@ -1641,64 +1642,66 @@ void get_pwr()
     return;
 }
 /*
- * korekcja na spadek napięcia na diodzie BAT41
+ * korekcja na spadek napięcia na diodzie
+ * input: napięcie wejściowe w mV
+ * test: z 12V PRek 2,2k na wej direct couplera (sama dioda plus 68k plu dwa razy 68k) i pomiar napięcia przed i za diodą (spadek) przy takim obciążeniu
  */
 int correction(int input)
 {
-#ifdef KOREKCJA_BAT41_10k
-	if (input <= 80)
+#ifdef KOREKCJA_BAT41_10k		// skąd to 10k? a nie 100k? (68k+34k (dwa 68k równolegle))
+	if (input <= 80)		// 74
 	{
 		return 0;
 	}
-	if (input <= 171)
+	if (input <= 171)	// 145
 	{
 		input += 205;	// 244
 	}
-	else if (input <= 328)
+	else if (input <= 328)	// 192
 	{
 		input += 215;	// 254
 	}
-	else if (input <= 582)
+	else if (input <= 582)	// 222
 	{
 		input += 226;	// 280
 	}
-	else if (input <= 820)
+	else if (input <= 820)	// 235
 	{
 		input += 241;	// 297
 	}
-	else if (input <= 1100)
+	else if (input <= 1100)		// 245
 	{
 		input += 250;	// 310
 	}
-	else if (input <= 2181)
+	else if (input <= 2181)		// 268
 	{
 		input += 260;	// 430
 	}
-	else if (input <= 3322)
+	else if (input <= 3322)		// 281
 	{
 		input += 270;	// 484
 	}
-	else if (input <= 4623)
+	else if (input <= 4623)		// 291
 	{
 		input += 280;	// 530
 	}
-	else if (input <= 5862)
+	else if (input <= 5862)		// 299
 	{
 		input += 290;	// 648
 	}
-	else if (input <= 7146)
+	else if (input <= 7146)		// 306
 	{
 		input += 300;	// 743
 	}
-	else if (input <= 8502)
+	else if (input <= 8502)	// 310
 	{
-		input += 310;	// 8000
+		input += 310;	// 8000; 318
 	}
-	else if (input <= 10500)
+	else if (input <= 10500)	// 318
 	{
-		input += 320;	// 840
+		input += 320;	// 840;
 	}
-	else
+	else		// 324
 	{
 		input += 330;	// 860
 	}
