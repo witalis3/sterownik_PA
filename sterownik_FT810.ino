@@ -1653,7 +1653,7 @@ int correction(int input)
 	{
 		return 0;
 	}
-	if (input <= 171)	// 145
+	if (input <= 171)	// 145 -> wartości dla MMDL770T1G
 	{
 		input += 205;	// 244
 	}
